@@ -12,6 +12,6 @@ def resolve(attacker_army, defender_army, terrain_mod=1.0):
         u.hp *= (1 - atk_loss)
     for u in defender_army.units:
         u.hp *= (1 - def_loss)
-    attacker_army.units = [u for u in attacker_army.units if u.hp > 20]
-    defender_army.units = [u for u in defender_army.units if u.hp > 20]
+    attacker_army.units = [u for u in attacker_army.units if u.hp > 0]
+    defender_army.units = [u for u in defender_army.units if u.hp > 0]
     return winner
