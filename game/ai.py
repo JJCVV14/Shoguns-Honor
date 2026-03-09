@@ -7,6 +7,8 @@ from game.state import GameState, UnitCard
 
 def run_ai_turn(gs: GameState, faction_id: str) -> None:
     """Run one strategic AI turn for a faction."""
+    if faction_id == "revolutionaries":
+        return
     faction = gs.factions[faction_id]
     owned = [p for p in gs.planets.values() if p.owner == faction_id]
     if not owned:
@@ -42,7 +44,7 @@ def _build_structures(gs: GameState, faction_id: str, owned_planets) -> None:
 
 def _move_armies(gs: GameState, faction_id: str) -> None:
     faction = gs.factions[faction_id]
-    for army in [a for a in gs.armies.values() if a.faction_id == faction_id and a.movement > 0]:
+    for army in [a for a in gs.armies.values() if a.faction_id == faction_id and a.movement > 0 and a.can_move]:
         planet = gs.planets[army.planet]
         if not planet.connections:
             continue
@@ -84,7 +86,7 @@ def _recruit_units(gs: GameState, faction_id: str, owned_planets) -> None:
             if army.faction_id == faction_id and army.planet == planet.name
         ]
         for army in stationed:
-            if len(army.units) >= 10 or faction.treasury <= 120 or random.random() >= 0.4:
+            if faction.treasury <= 120 or random.random() >= 0.4:
                 continue
 
             template = random.choice(recruit_pool)
