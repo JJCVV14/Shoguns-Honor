@@ -1,651 +1,496 @@
+import math
 import random
 from dataclasses import asdict, dataclass
-from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import streamlit as st
 
 Side = str
-Hex = Tuple[int, int]
+Pos = Tuple[int, int]
 
 EMPIRE: Side = "Empire"
 REBELS: Side = "Rebels"
+SIDES = (EMPIRE, REBELS)
 
-MAP_W = 12
-MAP_H = 12
-BATTLE_W = 6
-BATTLE_H = 10
-SETTLEMENT_COUNT = 8
+MAP_W = 20
+MAP_H = 14
 
-UNIT_TEMPLATES = {
-    EMPIRE: {"name": "Stormtrooper Squad", "hp": 3, "dmg": 1},
-    REBELS: {"name": "Rebel Squad", "hp": 3, "dmg": 1},
+
+UNIT_DEFS: Dict[Side, Dict[str, dict]] = {
+    EMPIRE: {
+        "Conscripts": {"hp": 40, "dmg": 8, "range": 1, "speed": 1, "cost": 90, "time": 2, "icon": "⚫"},
+        "Bike Squad": {"hp": 55, "dmg": 10, "range": 1, "speed": 2, "cost": 140, "time": 3, "icon": "🏍️"},
+        "Siege Walker": {"hp": 120, "dmg": 20, "range": 3, "speed": 1, "cost": 280, "time": 5, "icon": "🕷️"},
+    },
+    REBELS: {
+        "Militia": {"hp": 35, "dmg": 9, "range": 1, "speed": 1, "cost": 80, "time": 2, "icon": "🔴"},
+        "Skimmer": {"hp": 50, "dmg": 11, "range": 1, "speed": 2, "cost": 135, "time": 3, "icon": "🛵"},
+        "Rocket Truck": {"hp": 95, "dmg": 22, "range": 3, "speed": 1, "cost": 260, "time": 5, "icon": "🚚"},
+    },
 }
 
+STRUCTURE_DEFS = {
+    "Command": {"hp": 420, "cost": 0, "income": 8, "icon": "🏰", "queue": ["core"]},
+    "Barracks": {"hp": 220, "cost": 180, "income": 0, "icon": "🏢", "queue": ["infantry", "fast"]},
+    "War Factory": {"hp": 260, "cost": 260, "income": 0, "icon": "🏭", "queue": ["heavy"]},
+    "Outpost": {"hp": 170, "cost": 120, "income": 2, "icon": "🛰️", "queue": []},
+}
 
-def hex_distance(a: Hex, b: Hex) -> int:
-    aq, ar = a
-    bq, br = b
-    ax, az = aq, ar
-    ay = -ax - az
-    bx, bz = bq, br
-    by = -bx - bz
-    return max(abs(ax - bx), abs(ay - by), abs(az - bz))
-
-
-def neighbors(h: Hex) -> List[Hex]:
-    q, r = h
-    return [
-        (q + 1, r),
-        (q - 1, r),
-        (q, r + 1),
-        (q, r - 1),
-        (q + 1, r - 1),
-        (q - 1, r + 1),
-    ]
-
-
-def in_bounds(h: Hex, w: int, hh: int) -> bool:
-    return 0 <= h[0] < w and 0 <= h[1] < hh
-
-
-def key(h: Hex) -> str:
-    return f"{h[0]},{h[1]}"
-
-
-def parse_hex(k: str) -> Hex:
-    q, r = k.split(",")
-    return int(q), int(r)
-
-
-def side_dot(side: Side) -> str:
-    return "⚫" if side == EMPIRE else "🔴"
-
-
-def side_label(side: Side) -> str:
-    return f"{side_dot(side)} {side}"
-
-
-def load_symbol(side: Side) -> Optional[Path]:
-    # Tries repository image files first, then common /assets overrides.
-    candidates = {
-        REBELS: [
-            "rebel.webp",
-            "assets/rebel_symbol.svg",
-            "assets/rebel.png",
-            "assets/rebels.png",
-            "assets/rebel_symbol.png",
-        ],
-        EMPIRE: [
-            "emprie.png",
-            "assets/empire_symbol.svg",
-            "assets/empire.png",
-            "assets/empire_symbol.png",
-            "assets/imperial.png",
-        ],
-    }
-    for item in candidates[side]:
-        p = Path(item)
-        if p.exists():
-            return p
-    return None
+RESOURCE_ICON = "💠"
 
 
 @dataclass
 class Unit:
     id: str
     side: Side
-    name: str
+    kind: str
     hp: int
-    dmg: int
-    pos: Hex
-    moved: bool = False
+    pos: Pos
+    order: str = "idle"  # idle, move, attack
+    target: Optional[Pos] = None
 
 
-# ---------- world setup ----------
-def island_land() -> Set[Hex]:
-    land: Set[Hex] = set()
-    center = (5, 6)
-    for q in range(MAP_W):
-        for r in range(MAP_H):
-            if hex_distance((q, r), center) <= 5:
-                land.add((q, r))
+@dataclass
+class Structure:
+    id: str
+    side: Side
+    kind: str
+    hp: int
+    pos: Pos
+    queue: List[dict]
 
-    # cut a few edge tiles to make a rough island silhouette
-    coast_cuts = {
-        (0, 6),
-        (11, 6),
-        (1, 2),
-        (2, 1),
-        (9, 1),
-        (10, 2),
-        (1, 9),
-        (2, 10),
-        (9, 10),
-        (10, 9),
+
+def in_bounds(p: Pos) -> bool:
+    return 0 <= p[0] < MAP_W and 0 <= p[1] < MAP_H
+
+
+def chebyshev(a: Pos, b: Pos) -> int:
+    return max(abs(a[0] - b[0]), abs(a[1] - b[1]))
+
+
+def neighbors8(p: Pos) -> List[Pos]:
+    x, y = p
+    out = []
+    for dx in (-1, 0, 1):
+        for dy in (-1, 0, 1):
+            if dx == 0 and dy == 0:
+                continue
+            np = (x + dx, y + dy)
+            if in_bounds(np):
+                out.append(np)
+    return out
+
+
+def side_color(side: Side) -> str:
+    return "⚫" if side == EMPIRE else "🔴"
+
+
+def side_name(side: Side) -> str:
+    return f"{side_color(side)} {side}"
+
+
+def unit_stats(side: Side, kind: str) -> dict:
+    return UNIT_DEFS[side][kind]
+
+
+def get_unit(game: dict, uid: str) -> Optional[dict]:
+    return next((u for u in game["units"] if u["id"] == uid and u["hp"] > 0), None)
+
+
+def unit_at(game: dict, p: Pos) -> Optional[dict]:
+    return next((u for u in game["units"] if u["hp"] > 0 and tuple(u["pos"]) == p), None)
+
+
+def structure_at(game: dict, p: Pos) -> Optional[dict]:
+    return next((s for s in game["structures"] if s["hp"] > 0 and tuple(s["pos"]) == p), None)
+
+
+def occupied(game: dict, p: Pos) -> bool:
+    return unit_at(game, p) is not None or structure_at(game, p) is not None
+
+
+def closest_enemy(game: dict, side: Side, pos: Pos) -> Optional[Pos]:
+    targets = []
+    for u in game["units"]:
+        if u["hp"] > 0 and u["side"] != side:
+            targets.append(tuple(u["pos"]))
+    for s in game["structures"]:
+        if s["hp"] > 0 and s["side"] != side:
+            targets.append(tuple(s["pos"]))
+    if not targets:
+        return None
+    return min(targets, key=lambda t: chebyshev(pos, t))
+
+
+def move_step_towards(src: Pos, dst: Pos) -> Pos:
+    sx, sy = src
+    dx = 0 if dst[0] == sx else (1 if dst[0] > sx else -1)
+    dy = 0 if dst[1] == sy else (1 if dst[1] > sy else -1)
+    return sx + dx, sy + dy
+
+
+def make_initial_game(player_side: Side) -> dict:
+    empire_base = (2, MAP_H // 2)
+    rebel_base = (MAP_W - 3, MAP_H // 2)
+
+    nodes = [(MAP_W // 2, 2), (MAP_W // 2, MAP_H - 3), (MAP_W // 2, MAP_H // 2)]
+
+    structures = [
+        asdict(Structure("emp-cmd", EMPIRE, "Command", STRUCTURE_DEFS["Command"]["hp"], empire_base, [])),
+        asdict(Structure("reb-cmd", REBELS, "Command", STRUCTURE_DEFS["Command"]["hp"], rebel_base, [])),
+        asdict(Structure("emp-barr", EMPIRE, "Barracks", STRUCTURE_DEFS["Barracks"]["hp"], (4, MAP_H // 2 - 2), [])),
+        asdict(Structure("reb-barr", REBELS, "Barracks", STRUCTURE_DEFS["Barracks"]["hp"], (MAP_W - 5, MAP_H // 2 + 2), [])),
+    ]
+
+    units = [
+        asdict(Unit("emp-1", EMPIRE, "Conscripts", unit_stats(EMPIRE, "Conscripts")["hp"], (3, MAP_H // 2))),
+        asdict(Unit("emp-2", EMPIRE, "Bike Squad", unit_stats(EMPIRE, "Bike Squad")["hp"], (4, MAP_H // 2))),
+        asdict(Unit("reb-1", REBELS, "Militia", unit_stats(REBELS, "Militia")["hp"], (MAP_W - 4, MAP_H // 2))),
+        asdict(Unit("reb-2", REBELS, "Skimmer", unit_stats(REBELS, "Skimmer")["hp"], (MAP_W - 5, MAP_H // 2))),
+    ]
+
+    return {
+        "phase": "playing",
+        "tick": 1,
+        "player_side": player_side,
+        "resources": {EMPIRE: 350, REBELS: 350},
+        "selected": None,
+        "nodes": [list(n) for n in nodes],
+        "node_owner": {f"{x},{y}": None for (x, y) in nodes},
+        "units": units,
+        "structures": structures,
+        "winner": None,
     }
-    return {h for h in land if h not in coast_cuts}
 
 
-def pick_settlements(land: Set[Hex], count: int = SETTLEMENT_COUNT) -> List[Hex]:
-    pool = list(land)
-    random.shuffle(pool)
-    settlements: List[Hex] = []
-
-    # minimum of two hexes between settlements => hex distance >= 3
-    for spot in pool:
-        if all(hex_distance(spot, existing) >= 3 for existing in settlements):
-            settlements.append(spot)
-        if len(settlements) == count:
-            return settlements
-
-    raise RuntimeError("Could not place all settlements with spacing constraints.")
+def structure_income(game: dict, side: Side) -> int:
+    total = 0
+    for s in game["structures"]:
+        if s["hp"] > 0 and s["side"] == side:
+            total += STRUCTURE_DEFS[s["kind"]]["income"]
+    return total
 
 
-def unit_at(units: List[dict], pos: Hex) -> Optional[dict]:
-    for u in units:
-        if u["hp"] > 0 and tuple(u["pos"]) == pos:
-            return u
+def update_node_control(game: dict) -> None:
+    for node in [tuple(n) for n in game["nodes"]]:
+        owner = None
+        for u in game["units"]:
+            if u["hp"] > 0 and tuple(u["pos"]) == node:
+                owner = u["side"]
+                break
+        if owner is None:
+            for s in game["structures"]:
+                if s["hp"] > 0 and tuple(s["pos"]) == node:
+                    owner = s["side"]
+                    break
+        game["node_owner"][f"{node[0]},{node[1]}"] = owner
+
+
+def apply_income(game: dict) -> None:
+    for side in SIDES:
+        node_income = sum(12 for owner in game["node_owner"].values() if owner == side)
+        game["resources"][side] += structure_income(game, side) + node_income
+
+
+def produce_units(game: dict) -> None:
+    for s in game["structures"]:
+        if s["hp"] <= 0 or not s["queue"]:
+            continue
+        s["queue"][0]["remaining"] -= 1
+        if s["queue"][0]["remaining"] > 0:
+            continue
+
+        order = s["queue"].pop(0)
+        kind = order["kind"]
+        spawn = None
+        for n in neighbors8(tuple(s["pos"])) + [tuple(s["pos"])]:
+            if not occupied(game, n):
+                spawn = n
+                break
+        if not spawn:
+            continue
+
+        idx = 1 + sum(1 for u in game["units"] if u["side"] == s["side"])
+        hp = unit_stats(s["side"], kind)["hp"]
+        game["units"].append(asdict(Unit(f"{s['side'][:3]}-{idx}", s["side"], kind, hp, spawn)))
+
+
+def unit_attack_phase(game: dict) -> None:
+    for u in [u for u in game["units"] if u["hp"] > 0]:
+        stats = unit_stats(u["side"], u["kind"])
+        pos = tuple(u["pos"])
+        enemies: List[Tuple[int, dict]] = []
+
+        for eu in game["units"]:
+            if eu["hp"] > 0 and eu["side"] != u["side"]:
+                d = chebyshev(pos, tuple(eu["pos"]))
+                if d <= stats["range"]:
+                    enemies.append((d, eu))
+
+        for es in game["structures"]:
+            if es["hp"] > 0 and es["side"] != u["side"]:
+                d = chebyshev(pos, tuple(es["pos"]))
+                if d <= stats["range"]:
+                    enemies.append((d, es))
+
+        if enemies:
+            enemies.sort(key=lambda x: x[0])
+            enemies[0][1]["hp"] -= stats["dmg"]
+
+
+def unit_move_phase(game: dict) -> None:
+    for u in [u for u in game["units"] if u["hp"] > 0]:
+        stats = unit_stats(u["side"], u["kind"])
+        current = tuple(u["pos"])
+
+        target = tuple(u["target"]) if u.get("target") else None
+        if u["order"] in ("attack", "move") and target:
+            for _ in range(stats["speed"]):
+                if current == target:
+                    break
+                nxt = move_step_towards(current, target)
+                if occupied(game, nxt):
+                    break
+                u["pos"] = [nxt[0], nxt[1]]
+                current = nxt
+
+        if u["order"] == "attack":
+            if not target:
+                enemy = closest_enemy(game, u["side"], tuple(u["pos"]))
+                if enemy:
+                    u["target"] = [enemy[0], enemy[1]]
+            elif chebyshev(tuple(u["pos"]), target) <= 1:
+                enemy = closest_enemy(game, u["side"], tuple(u["pos"]))
+                if enemy:
+                    u["target"] = [enemy[0], enemy[1]]
+
+
+def cleanup(game: dict) -> None:
+    game["units"] = [u for u in game["units"] if u["hp"] > 0]
+    game["structures"] = [s for s in game["structures"] if s["hp"] > 0]
+
+
+def queue_unit(game: dict, structure_id: str, kind: str) -> bool:
+    s = next((x for x in game["structures"] if x["id"] == structure_id and x["hp"] > 0), None)
+    if not s:
+        return False
+    cost = unit_stats(s["side"], kind)["cost"]
+    if game["resources"][s["side"]] < cost:
+        return False
+    game["resources"][s["side"]] -= cost
+    s["queue"].append({"kind": kind, "remaining": unit_stats(s["side"], kind)["time"]})
+    return True
+
+
+def ai_build(game: dict, side: Side) -> None:
+    my_structs = [s for s in game["structures"] if s["hp"] > 0 and s["side"] == side]
+    if not my_structs:
+        return
+
+    has_factory = any(s["kind"] == "War Factory" for s in my_structs)
+    cmd = next((s for s in my_structs if s["kind"] == "Command"), None)
+
+    if not has_factory and cmd and game["resources"][side] >= STRUCTURE_DEFS["War Factory"]["cost"]:
+        for n in neighbors8(tuple(cmd["pos"])):
+            if not occupied(game, n):
+                game["resources"][side] -= STRUCTURE_DEFS["War Factory"]["cost"]
+                idx = 1 + sum(1 for s in game["structures"] if s["side"] == side)
+                game["structures"].append(
+                    asdict(Structure(f"{side[:3]}-wf-{idx}", side, "War Factory", STRUCTURE_DEFS["War Factory"]["hp"], n, []))
+                )
+                break
+
+    for s in my_structs:
+        if s["kind"] == "Barracks" and len(s["queue"]) < 2:
+            queue_unit(game, s["id"], random.choice(["Conscripts", "Bike Squad"]) if side == EMPIRE else random.choice(["Militia", "Skimmer"]))
+        if s["kind"] == "War Factory" and len(s["queue"]) < 1:
+            queue_unit(game, s["id"], "Siege Walker" if side == EMPIRE else "Rocket Truck")
+
+
+def ai_orders(game: dict, side: Side) -> None:
+    enemy_cmd = next((s for s in game["structures"] if s["side"] != side and s["kind"] == "Command"), None)
+    if not enemy_cmd:
+        return
+    target = tuple(enemy_cmd["pos"])
+    for u in game["units"]:
+        if u["hp"] > 0 and u["side"] == side and u["order"] == "idle":
+            u["order"] = "attack"
+            u["target"] = [target[0], target[1]]
+
+
+def check_winner(game: dict) -> Optional[Side]:
+    for side in SIDES:
+        enemy = REBELS if side == EMPIRE else EMPIRE
+        enemy_cmd_alive = any(s for s in game["structures"] if s["side"] == enemy and s["kind"] == "Command")
+        if not enemy_cmd_alive:
+            return side
     return None
 
 
-def living_units(units: List[dict], side: Optional[Side] = None) -> List[dict]:
-    return [u for u in units if u["hp"] > 0 and (side is None or u["side"] == side)]
-
-
-def population_cap(game: dict, side: Side) -> int:
-    owned = sum(1 for owner in game["ownership"].values() if owner == side)
-    return 3 + owned
-
-
-def population_used(game: dict, side: Side) -> int:
-    return len(living_units(game["units"], side))
-
-
-def can_recruit(game: dict, side: Side) -> bool:
-    return population_used(game, side) < population_cap(game, side)
-
-
-def recruit_unit(game: dict, side: Side) -> bool:
-    if not can_recruit(game, side):
-        return False
-
-    settlements = [parse_hex(k) for k, owner in game["ownership"].items() if owner == side]
-    random.shuffle(settlements)
-    for s in settlements:
-        if unit_at(game["units"], s) is None:
-            idx = 1 + sum(1 for u in game["units"] if u["side"] == side)
-            t = UNIT_TEMPLATES[side]
-            game["units"].append(
-                asdict(
-                    Unit(
-                        id=f"{side[:3]}-{idx}",
-                        side=side,
-                        name=t["name"],
-                        hp=t["hp"],
-                        dmg=t["dmg"],
-                        pos=s,
-                    )
-                )
-            )
-            return True
-    return False
-
-
-def capture_if_applicable(game: dict, mover: dict) -> None:
-    pos = tuple(mover["pos"])
-    k = key(pos)
-    if k not in game["ownership"]:
-        return
-
-    owner = game["ownership"][k]
-    if owner is None:
-        game["ownership"][k] = mover["side"]
-        return
-
-    if owner != mover["side"]:
-        enemy_defender = any(
-            tuple(u["pos"]) == pos and u["side"] == owner and u["hp"] > 0 for u in game["units"]
-        )
-        if not enemy_defender:
-            game["ownership"][k] = mover["side"]
-
-
-def touching_enemy(units: List[dict]) -> bool:
-    alive = living_units(units)
-    for u in alive:
-        for n in neighbors(tuple(u["pos"])):
-            other = unit_at(alive, n)
-            if other and other["side"] != u["side"]:
-                return True
-    return False
-
-
-def all_settlements_controlled_by_one_side(game: dict) -> Optional[Side]:
-    owners = list(game["ownership"].values())
-    if any(o is None for o in owners):
-        return None
-    unique = set(owners)
-    return next(iter(unique)) if len(unique) == 1 else None
-
-
-def setup_game(player_side: Side) -> None:
-    land = island_land()
-    settlements = pick_settlements(land)
-    a, b = random.sample(settlements, 2)
-
-    ownership: Dict[str, Optional[Side]] = {key(s): None for s in settlements}
-    ownership[key(a)] = EMPIRE
-    ownership[key(b)] = REBELS
-
-    empire_t = UNIT_TEMPLATES[EMPIRE]
-    rebels_t = UNIT_TEMPLATES[REBELS]
-
-    units = [
-        asdict(Unit("Emp-1", EMPIRE, empire_t["name"], empire_t["hp"], empire_t["dmg"], a)),
-        asdict(Unit("Reb-1", REBELS, rebels_t["name"], rebels_t["hp"], rebels_t["dmg"], b)),
-    ]
-
-    st.session_state.game = {
-        "phase": "map",
-        "player_side": player_side,
-        "active_side": EMPIRE,
-        "turn": 1,
-        "winner": None,
-        "land": [list(h) for h in sorted(land)],
-        "ownership": ownership,
-        "units": units,
-        "selected_unit": None,
-        "battle": None,
-    }
-
-
-# ---------- battle ----------
-def start_battle(game: dict) -> None:
-    battle_units: List[dict] = []
-    occupied: Set[Hex] = set()
-
-    for wu in living_units(game["units"]):
-        while True:
-            p = (random.randint(0, BATTLE_W - 1), random.randint(0, BATTLE_H - 1))
-            if p not in occupied:
-                occupied.add(p)
-                break
-        battle_units.append(
-            {
-                "id": wu["id"],
-                "side": wu["side"],
-                "name": wu["name"],
-                "hp": wu["hp"],
-                "dmg": wu["dmg"],
-                "pos": [p[0], p[1]],
-                "moved": False,
-                "acted": False,
-            }
-        )
-
-    game["phase"] = "battle"
-    game["battle"] = {
-        "turn": 1,
-        "active_side": game["active_side"],
-        "selected_unit": None,
-        "units": battle_units,
-    }
-
-
-def finish_battle(game: dict) -> None:
-    b_units = {u["id"]: u for u in game["battle"]["units"]}
-    survivors = []
-    for u in game["units"]:
-        bu = b_units.get(u["id"])
-        if bu and bu["hp"] > 0:
-            u["hp"] = bu["hp"]
-            survivors.append(u)
-    game["units"] = survivors
-    game["battle"] = None
-    game["phase"] = "map"
-
-
-def end_map_turn(game: dict) -> None:
-    current = game["active_side"]
-    for u in game["units"]:
-        if u["side"] == current:
-            u["moved"] = False
-    game["active_side"] = REBELS if current == EMPIRE else EMPIRE
-    game["turn"] += 1
-
-    winner = all_settlements_controlled_by_one_side(game)
-    if winner:
-        game["winner"] = winner
+def simulate_tick(game: dict) -> None:
+    update_node_control(game)
+    apply_income(game)
+    produce_units(game)
+    ai_build(game, REBELS if game["player_side"] == EMPIRE else EMPIRE)
+    ai_orders(game, REBELS if game["player_side"] == EMPIRE else EMPIRE)
+    unit_move_phase(game)
+    unit_attack_phase(game)
+    cleanup(game)
+    update_node_control(game)
+    game["tick"] += 1
+    game["winner"] = check_winner(game)
+    if game["winner"]:
         game["phase"] = "game_over"
 
 
-def end_battle_turn(game: dict) -> None:
-    battle = game["battle"]
-    current = battle["active_side"]
-    for u in battle["units"]:
-        if u["side"] == current and u["hp"] > 0:
-            u["moved"] = False
-            u["acted"] = False
-    battle["active_side"] = REBELS if current == EMPIRE else EMPIRE
-    battle["turn"] += 1
-    battle["selected_unit"] = None
+def tile_label(game: dict, p: Pos) -> str:
+    u = unit_at(game, p)
+    if u:
+        hp = max(1, math.ceil(u["hp"] / 10))
+        return f"{UNIT_DEFS[u['side']][u['kind']]['icon']}{hp}"
+    s = structure_at(game, p)
+    if s:
+        return f"{STRUCTURE_DEFS[s['kind']]['icon']}{side_color(s['side'])}"
+    if f"{p[0]},{p[1]}" in game["node_owner"]:
+        owner = game["node_owner"][f"{p[0]},{p[1]}"]
+        return RESOURCE_ICON if owner is None else f"{RESOURCE_ICON}{side_color(owner)}"
+    return "·"
 
 
-def ai_map_turn(game: dict) -> None:
-    side = game["active_side"]
-    land = {tuple(h) for h in game["land"]}
-    for u in living_units(game["units"], side):
-        options = [
-            n
-            for n in neighbors(tuple(u["pos"]))
-            if n in land and unit_at(game["units"], n) is None
-        ]
-        if options and not u["moved"]:
-            u["pos"] = list(random.choice(options))
-            u["moved"] = True
-            capture_if_applicable(game, u)
+def draw_map(game: dict) -> None:
+    st.subheader("Battlefield")
+    st.caption("Select your unit/structure, then issue orders. Advance simulation with Step 1 Tick.")
 
-    if touching_enemy(game["units"]):
-        start_battle(game)
+    for y in range(MAP_H):
+        cols = st.columns(MAP_W)
+        for x in range(MAP_W):
+            with cols[x]:
+                if st.button(tile_label(game, (x, y)), key=f"tile-{x}-{y}-{game['tick']}", use_container_width=True):
+                    game["selected"] = [x, y]
+
+
+def render_selection_panel(game: dict) -> None:
+    st.subheader("Command Panel")
+    sel = tuple(game["selected"]) if game.get("selected") else None
+    if not sel:
+        st.info("Nothing selected.")
         return
 
-    recruit_unit(game, side)
-    end_map_turn(game)
+    u = unit_at(game, sel)
+    s = structure_at(game, sel)
 
-
-def ai_battle_turn(game: dict) -> None:
-    battle = game["battle"]
-    side = battle["active_side"]
-    my_units = [u for u in battle["units"] if u["side"] == side and u["hp"] > 0]
-
-    for u in my_units:
-        pos = tuple(u["pos"])
-        adjacent_enemies = [
-            e
-            for e in battle["units"]
-            if e["hp"] > 0 and e["side"] != side and tuple(e["pos"]) in neighbors(pos)
-        ]
-        if adjacent_enemies and not u["acted"]:
-            target = random.choice(adjacent_enemies)
-            target["hp"] -= u["dmg"]
-            u["acted"] = True
-            continue
-
-        if not u["moved"]:
-            options = [
-                n
-                for n in neighbors(pos)
-                if in_bounds(n, BATTLE_W, BATTLE_H) and unit_at(battle["units"], n) is None
-            ]
-            if options:
-                u["pos"] = list(random.choice(options))
-            u["moved"] = True
-
-            pos = tuple(u["pos"])
-            adjacent_enemies = [
-                e
-                for e in battle["units"]
-                if e["hp"] > 0 and e["side"] != side and tuple(e["pos"]) in neighbors(pos)
-            ]
-            if adjacent_enemies and not u["acted"]:
-                target = random.choice(adjacent_enemies)
-                target["hp"] -= u["dmg"]
-                u["acted"] = True
-
-    alive_sides = {u["side"] for u in battle["units"] if u["hp"] > 0}
-    if len(alive_sides) <= 1:
-        finish_battle(game)
+    if u:
+        st.write(f"**Unit:** {u['kind']} ({side_name(u['side'])}) HP: {u['hp']}")
+        if u["side"] == game["player_side"]:
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("Move Order", use_container_width=True):
+                    u["order"] = "move"
+            with c2:
+                if st.button("Attack-Move", use_container_width=True):
+                    u["order"] = "attack"
+            tx = st.number_input("Target X", 0, MAP_W - 1, int(u["pos"][0]), key="ux")
+            ty = st.number_input("Target Y", 0, MAP_H - 1, int(u["pos"][1]), key="uy")
+            if st.button("Set Target", use_container_width=True):
+                u["target"] = [int(tx), int(ty)]
         return
 
-    end_battle_turn(game)
+    if s:
+        st.write(f"**Structure:** {s['kind']} ({side_name(s['side'])}) HP: {s['hp']}")
+        if s["side"] != game["player_side"]:
+            return
+
+        if s["kind"] in ("Barracks", "Command", "War Factory"):
+            choices = list(UNIT_DEFS[s["side"]].keys())
+            if s["kind"] == "Barracks":
+                allowed = [choices[0], choices[1]]
+            elif s["kind"] == "War Factory":
+                allowed = [choices[2]]
+            else:
+                allowed = [choices[0]]
+
+            for kind in allowed:
+                cost = unit_stats(s["side"], kind)["cost"]
+                if st.button(f"Train {kind} (${cost})", key=f"build-{s['id']}-{kind}", use_container_width=True):
+                    if not queue_unit(game, s["id"], kind):
+                        st.warning("Not enough credits.")
+
+        if s["kind"] == "Command" and game["resources"][s["side"]] >= STRUCTURE_DEFS["Outpost"]["cost"]:
+            if st.button("Deploy Outpost (adjacent)", use_container_width=True):
+                for n in neighbors8(tuple(s["pos"])):
+                    if not occupied(game, n):
+                        game["resources"][s["side"]] -= STRUCTURE_DEFS["Outpost"]["cost"]
+                        idx = 1 + sum(1 for x in game["structures"] if x["side"] == s["side"])
+                        game["structures"].append(
+                            asdict(Structure(f"{s['side'][:3]}-op-{idx}", s["side"], "Outpost", STRUCTURE_DEFS["Outpost"]["hp"], n, []))
+                        )
+                        break
+        return
+
+    if f"{sel[0]},{sel[1]}" in game["node_owner"]:
+        owner = game["node_owner"][f"{sel[0]},{sel[1]}"]
+        st.write(f"Resource Node owner: {owner or 'Neutral'}")
 
 
-# ---------- rendering ----------
-def tile_button(label: str, enabled: bool, button_key: str) -> bool:
-    if enabled:
-        return st.button(label, key=button_key, use_container_width=True)
-    st.markdown(
-        f"<div style='padding:0.38rem 0.5rem;background:#f5f5f5;border-radius:0.35rem;text-align:center'>{label}</div>",
-        unsafe_allow_html=True,
-    )
-    return False
-
-
-def render_world(game: dict) -> None:
-    st.subheader("World Map")
-    st.caption("Move one hex per turn. Capture neutral or undefended enemy settlements.")
-
-    map_image = Path("Game map.jpg")
-    if map_image.exists():
-        st.image(str(map_image), use_container_width=True)
-
+def render_header(game: dict) -> None:
+    st.title("Shogun's Honor: Rebel Uprising RTS")
     st.write(
-        f"Turn **{game['turn']}** | Active: **{side_label(game['active_side'])}** | You: **{side_label(game['player_side'])}**"
+        f"Tick **{game['tick']}** | You: **{side_name(game['player_side'])}** | "
+        f"Empire Credits: **{game['resources'][EMPIRE]}** | Rebels Credits: **{game['resources'][REBELS]}**"
     )
-
-    c1, c2 = st.columns(2)
-    with c1:
-        st.write(
-            f"Empire Population: {population_used(game, EMPIRE)} / {population_cap(game, EMPIRE)}"
-        )
-    with c2:
-        st.write(
-            f"Rebel Population: {population_used(game, REBELS)} / {population_cap(game, REBELS)}"
-        )
-
-    land = {tuple(h) for h in game["land"]}
-    settlement_hexes = {parse_hex(hk) for hk in game["ownership"].keys()}
-
-    selected_id = game["selected_unit"]
-    selected = next((u for u in game["units"] if u["id"] == selected_id and u["hp"] > 0), None)
-
-    for r in range(MAP_H):
-        cols = st.columns(MAP_W + 1)
-        offset = 1 if r % 2 == 1 else 0
-        if offset:
-            cols[0].markdown("&nbsp;", unsafe_allow_html=True)
-
-        for q in range(MAP_W):
-            h = (q, r)
-            with cols[q + offset]:
-                if h not in land:
-                    st.markdown("🌊")
-                    continue
-
-                occupant = unit_at(game["units"], h)
-                owner = game["ownership"].get(key(h))
-
-                if occupant:
-                    label = f"{side_dot(occupant['side'])}{occupant['hp']}"
-                elif h in settlement_hexes:
-                    label = "🏘️"
-                    if owner == EMPIRE:
-                        label = "🏘️⚫"
-                    elif owner == REBELS:
-                        label = "🏘️🔴"
-                else:
-                    label = "⬡"
-
-                my_turn = game["active_side"] == game["player_side"]
-                clickable = False
-                if my_turn:
-                    if occupant and occupant["side"] == game["active_side"]:
-                        clickable = True
-                    elif (
-                        selected
-                        and not selected["moved"]
-                        and h in neighbors(tuple(selected["pos"]))
-                        and unit_at(game["units"], h) is None
-                    ):
-                        clickable = True
-
-                if tile_button(label, clickable, f"map-{q}-{r}-{game['turn']}"):
-                    if occupant and occupant["side"] == game["active_side"]:
-                        game["selected_unit"] = occupant["id"]
-                    elif selected:
-                        selected["pos"] = [q, r]
-                        selected["moved"] = True
-                        game["selected_unit"] = None
-                        capture_if_applicable(game, selected)
-                        if touching_enemy(game["units"]):
-                            start_battle(game)
-                            st.rerun()
-
-    left, right = st.columns([1, 2])
-    with left:
-        if game["active_side"] == game["player_side"] and st.button(
-            "End Turn", use_container_width=True
-        ):
-            recruit_unit(game, game["active_side"])
-            end_map_turn(game)
-            game["selected_unit"] = None
-            st.rerun()
-    with right:
-        st.info("Select your unit, then click an adjacent empty hex.")
-
-
-def render_battle(game: dict) -> None:
-    battle = game["battle"]
-    st.subheader("Battlefield (6 x 10 Hexes)")
-    st.caption("Each unit may move once and attack once per turn; attacks require adjacency.")
-    st.write(f"Battle Turn **{battle['turn']}** | Active: **{side_label(battle['active_side'])}**")
-
-    selected_id = battle["selected_unit"]
-    selected = next((u for u in battle["units"] if u["id"] == selected_id and u["hp"] > 0), None)
-
-    for r in range(BATTLE_H):
-        cols = st.columns(BATTLE_W + 1)
-        offset = 1 if r % 2 == 1 else 0
-        if offset:
-            cols[0].markdown("&nbsp;", unsafe_allow_html=True)
-
-        for q in range(BATTLE_W):
-            h = (q, r)
-            with cols[q + offset]:
-                u = unit_at(battle["units"], h)
-                label = "⬡" if not u else f"{side_dot(u['side'])}{u['hp']}"
-
-                my_turn = battle["active_side"] == game["player_side"]
-                clickable = False
-                if my_turn:
-                    if u and u["side"] == battle["active_side"]:
-                        clickable = True
-                    elif selected:
-                        empty_move = (
-                            not selected["moved"]
-                            and h in neighbors(tuple(selected["pos"]))
-                            and in_bounds(h, BATTLE_W, BATTLE_H)
-                            and unit_at(battle["units"], h) is None
-                        )
-                        attack = (
-                            u
-                            and u["side"] != selected["side"]
-                            and not selected["acted"]
-                            and h in neighbors(tuple(selected["pos"]))
-                        )
-                        clickable = bool(empty_move or attack)
-
-                if tile_button(label, clickable, f"bat-{q}-{r}-{battle['turn']}"):
-                    if u and u["side"] == battle["active_side"]:
-                        battle["selected_unit"] = u["id"]
-                    elif selected:
-                        target = unit_at(battle["units"], h)
-                        if (
-                            target
-                            and target["side"] != selected["side"]
-                            and not selected["acted"]
-                            and h in neighbors(tuple(selected["pos"]))
-                        ):
-                            target["hp"] -= selected["dmg"]
-                            selected["acted"] = True
-                        elif (
-                            not selected["moved"]
-                            and h in neighbors(tuple(selected["pos"]))
-                            and in_bounds(h, BATTLE_W, BATTLE_H)
-                            and unit_at(battle["units"], h) is None
-                        ):
-                            selected["pos"] = [q, r]
-                            selected["moved"] = True
-
-    alive_sides = {u["side"] for u in battle["units"] if u["hp"] > 0}
-    if len(alive_sides) <= 1:
-        finish_battle(game)
-        st.success("Battle resolved. Returning to map.")
-        st.rerun()
-
-    if battle["active_side"] == game["player_side"] and st.button(
-        "End Battle Turn", use_container_width=True
-    ):
-        end_battle_turn(game)
-        st.rerun()
 
 
 def render_side_picker() -> None:
-    st.subheader("Choose Your Side")
-
-    rebel_symbol = load_symbol(REBELS)
-    empire_symbol = load_symbol(EMPIRE)
-
+    st.title("Shogun's Honor RTS")
+    st.subheader("Pick your faction")
     c1, c2 = st.columns(2)
     with c1:
-        st.markdown("### 🔴 Rebels")
-        if rebel_symbol:
-            st.image(str(rebel_symbol), width=180)
-        st.write("Unit: Rebel Squad — 3 HP, 1 DMG")
-        if st.button("Play Rebels", use_container_width=True):
-            setup_game(REBELS)
+        st.markdown("### ⚫ Empire")
+        st.write("Disciplined armor and superior siege platforms.")
+        if st.button("Command the Empire", use_container_width=True):
+            st.session_state.game = make_initial_game(EMPIRE)
             st.rerun()
     with c2:
-        st.markdown("### ⚫ Empire")
-        if empire_symbol:
-            st.image(str(empire_symbol), width=180)
-        st.write("Unit: Stormtrooper Squad — 3 HP, 1 DMG")
-        if st.button("Play Empire", use_container_width=True):
-            setup_game(EMPIRE)
+        st.markdown("### 🔴 Rebels")
+        st.write("Fast raids, cheap militia, and high-pressure rockets.")
+        if st.button("Lead the Rebels", use_container_width=True):
+            st.session_state.game = make_initial_game(REBELS)
             st.rerun()
-
-    if not rebel_symbol or not empire_symbol:
-        st.info(
-            "Faction symbol files can be replaced at assets/rebel_symbol.svg and "
-            "assets/empire_symbol.svg (or use rebel.png/empire.png)."
-        )
 
 
 def main() -> None:
-    st.set_page_config(page_title="Empire vs Rebels", layout="wide")
-    st.title("Empire vs Rebels - Hex Strategy")
-
+    st.set_page_config(layout="wide", page_title="Shogun's Honor RTS")
     if "game" not in st.session_state:
         st.session_state.game = {"phase": "choose_side"}
 
     game = st.session_state.game
-
     if game["phase"] == "choose_side":
         render_side_picker()
         return
 
     if game["phase"] == "game_over":
-        st.success(f"Game Over! {side_label(game['winner'])} controls all settlements.")
-        if st.button("Start New Game"):
+        st.success(f"Victory: {side_name(game['winner'])}")
+        if st.button("Start New Campaign"):
             st.session_state.clear()
             st.rerun()
         return
 
-    if game["phase"] == "map" and game["active_side"] != game["player_side"]:
-        st.info("AI is taking map turn...")
-        ai_map_turn(game)
-        st.rerun()
-
-    if game["phase"] == "battle" and game["battle"]["active_side"] != game["player_side"]:
-        st.info("AI is taking battle turn...")
-        ai_battle_turn(game)
-        st.rerun()
-
-    if game["phase"] == "map":
-        render_world(game)
-    elif game["phase"] == "battle":
-        render_battle(game)
+    render_header(game)
+    left, right = st.columns([3, 1])
+    with left:
+        draw_map(game)
+    with right:
+        render_selection_panel(game)
+        st.markdown("---")
+        if st.button("Step 1 Tick", use_container_width=True):
+            simulate_tick(game)
+            st.rerun()
+        if st.button("Step 5 Ticks", use_container_width=True):
+            for _ in range(5):
+                if game["phase"] != "playing":
+                    break
+                simulate_tick(game)
+            st.rerun()
 
 
 if __name__ == "__main__":
