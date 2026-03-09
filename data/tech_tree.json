@@ -1,0 +1,7 @@
+[
+  {"id":"logistics_1","name":"Logistics Protocols","turns":2,"cost":180,"effects":{"move_bonus":1}},
+  {"id":"econ_1","name":"Trade Integration","turns":2,"cost":200,"effects":{"income_mult":0.1}},
+  {"id":"inf_1","name":"Infantry Drill","turns":3,"cost":260,"effects":{"damage_bonus":1,"morale_bonus":5}},
+  {"id":"armor_1","name":"Armor Plating","turns":3,"cost":280,"effects":{"armor_bonus":1}},
+  {"id":"command_1","name":"Command Doctrine","turns":3,"cost":260,"effects":{"aura_bonus":25,"ability_cd":2}}
+]
