@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import random
 
-from game.state import GameState, UnitCard
+from game.state import Army, GameState, General, UnitCard
 
 
 def run_ai_turn(gs: GameState, faction_id: str) -> None:
@@ -85,14 +85,21 @@ def _recruit_units(gs: GameState, faction_id: str, owned_planets) -> None:
             for army in gs.armies.values()
             if army.faction_id == faction_id and army.planet == planet.name
         ]
-        for army in stationed:
-            if faction.treasury <= 120 or random.random() >= 0.4:
-                continue
+        if not stationed or faction.treasury <= 120 or random.random() >= 0.4:
+            continue
 
-            template = random.choice(recruit_pool)
-            if faction.treasury >= template["cost"]:
-                faction.treasury -= template["cost"]
-                army.units.append(UnitCard.from_template(template))
+        template = random.choice(recruit_pool)
+        if faction.treasury >= template["cost"]:
+            faction.treasury -= template["cost"]
+            gs.armies[gs.next_army_id] = Army(
+                id=gs.next_army_id,
+                faction_id=faction_id,
+                planet=planet.name,
+                general=General(name="Field Commander"),
+                units=[UnitCard.from_template(template)],
+                movement=0,
+            )
+            gs.next_army_id += 1
 
 
 def start_research_if_idle(gs: GameState, faction_id: str) -> None:
