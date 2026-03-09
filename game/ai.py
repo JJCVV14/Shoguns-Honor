@@ -56,7 +56,10 @@ def _move_armies(gs: GameState, faction_id: str) -> None:
         army.planet = target
         army.movement -= 1
 
-        if gs.planets[target].owner not in (faction_id, "neutral"):
+        if gs.planets[target].owner == "neutral":
+            gs.planets[target].owner = faction_id
+            gs.message = f"{faction.name} peacefully claims {target}."
+        elif gs.planets[target].owner != faction_id:
             gs.message = f"{faction.name} attacks {target}!"
 
 
