@@ -111,6 +111,9 @@ class App:
                 if (p.x - e.pos[0]) ** 2 + (p.y - e.pos[1]) ** 2 < 20 ** 2 and p.name in gs.planets[army.planet].connections:
                     army.planet = p.name
                     army.movement -= 1
+                    if p.owner == "neutral":
+                        p.owner = army.faction_id
+                        gs.message = f"{gs.factions[army.faction_id].name} peacefully claims {p.name}."
                     gs.selected_planet = p.name
                     break
 
