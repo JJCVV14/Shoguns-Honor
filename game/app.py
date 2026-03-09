@@ -548,9 +548,8 @@ class App:
 
     def _resolve_battle_outcome(self, attacker_won: bool, planet_name: str, atk, dfd):
         gs = self.gs
-
-        if attacker_won:
-            gs.planets[planet_name].owner = atk.faction_id
+        winner_faction = atk.faction_id if attacker_won else dfd.faction_id
+        gs.planets[planet_name].owner = winner_faction
 
         atk.units = [u for u in atk.units if u.hp > MIN_UNIT_HP]
         dfd.units = [u for u in dfd.units if u.hp > MIN_UNIT_HP]
@@ -560,9 +559,7 @@ class App:
         if not dfd.units:
             gs.armies.pop(dfd.id, None)
 
-        self._capture_planet_if_uncontested(planet_name, atk.faction_id if attacker_won else dfd.faction_id)
-
-        winner_faction = atk.faction_id if attacker_won else dfd.faction_id
+        self._capture_planet_if_uncontested(planet_name, winner_faction)
         player_won = winner_faction == gs.player_faction
 
         self.last_battle = {
