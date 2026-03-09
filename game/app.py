@@ -622,11 +622,16 @@ class App:
         elif self.mode == "help":
             self.screen.fill((15, 15, 20))
             tips = [
-                "Campaign: LMB select planet, RMB move selected army.",
-                "Buttons: recruit, build, research, tax, end turn.",
-                "If hostile armies share a planet, launch battle or auto-resolve.",
-                "Battle: LMB select squads, RMB order, 1/2/3 formations, R/O abilities.",
-                "Save from campaign panel. Press any key to return.",
+                "Goal: own 10 planets (or eliminate all rival factions) to win.",
+                "Map controls: LMB selects a planet/army. RMB moves selected army to a connected planet.",
+                "You can only recruit/build on planets you own. Select a planet first, then click Recruit or Build.",
+                "Recruiting uses the Training Queue and takes turns to complete (faster on military worlds).",
+                "Buildings consume planet slots and shape strategy: economy, military access, or stability control.",
+                "Research unlocks faction bonuses. Pick a tech in Research, or use Auto Pick if unsure.",
+                "Taxes raise income but can increase unrest and lower stability if pushed too high.",
+                "If opposing armies share a planet, resolve with Auto Resolve or Manual Battle.",
+                "Army View lets you inspect unit stats and merge friendly armies on the same planet.",
+                "Use Save from the campaign panel often. Press any key to return to menu.",
             ]
             for i, t in enumerate(tips):
                 self.screen.blit(self.font.render(t, True, (230, 230, 230)), (150, 180 + i * 34))
