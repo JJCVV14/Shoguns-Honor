@@ -35,6 +35,8 @@ class Army:
     general: General
     units: List[UnitCard] = field(default_factory=list)
     movement: int = 1
+    is_planet_garrison: bool = False
+    can_move: bool = True
 
     def strength(self) -> float:
         return sum(u.hp + u.soldiers * (u.stats["damage"] + u.stats["armor"]) for u in self.units if u.hp > 0)
@@ -131,7 +133,7 @@ def new_campaign(player_faction: str) -> GameState:
     f_data, p_data, unit_db, building_db, tech_db, leaders_db = load_game_data()
     allowed = opposing_factions(player_faction)
 
-    factions = {f["id"]: Faction(**f) for f in f_data if f["id"] in allowed}
+    factions = {f["id"]: Faction(**f) for f in f_data if f["id"] in (*allowed, "revolutionaries")}
     planets = {p["name"]: Planet(**p) for p in p_data}
 
     for planet in planets.values():
@@ -139,13 +141,17 @@ def new_campaign(player_faction: str) -> GameState:
             planet.owner = "neutral"
 
     for fid, faction in factions.items():
+        if fid == "revolutionaries":
+            continue
         for other in factions:
-            if fid != other:
+            if fid != other and other != "revolutionaries":
                 faction.diplomacy[other] = "war"
 
     armies: Dict[int, Army] = {}
     a_id = 1
     for fid, faction in factions.items():
+        if fid == "revolutionaries":
+            continue
         capital = planets[faction.capital]
         capital.buildings = ["Barracks", "Trade Port"]
         general = General(name=random.choice(leaders_db[fid]))
@@ -184,6 +190,8 @@ def serialize(gs: GameState) -> dict:
                 "general": asdict(a.general),
                 "units": [asdict(u) for u in a.units],
                 "movement": a.movement,
+                "is_planet_garrison": a.is_planet_garrison,
+                "can_move": a.can_move,
             }
             for k, a in gs.armies.items()
         },
@@ -205,6 +213,8 @@ def deserialize(payload: dict) -> GameState:
             general=General(**a["general"]),
             units=[UnitCard(**u) for u in a["units"]],
             movement=a["movement"],
+            is_planet_garrison=a.get("is_planet_garrison", False),
+            can_move=a.get("can_move", True),
         )
 
     return GameState(
