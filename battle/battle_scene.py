@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 import random
 import pygame
 
@@ -30,6 +29,7 @@ class BattleScene:
         self.screen = screen
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont("arial", 16)
+        self.small = pygame.font.SysFont("arial", 12)
         self.big = pygame.font.SysFont("arial", 24, bold=True)
         self.terrain = [pygame.Rect(280, 180, 180, 130), pygame.Rect(710, 370, 190, 140)]
         self.highground = pygame.Rect(500, 120, 220, 120)
@@ -45,6 +45,7 @@ class BattleScene:
         self.selected = []
         self.time = 0
         self.result = None
+        self.projectiles = []
 
     def run(self):
         while not self.result:
@@ -86,6 +87,7 @@ class BattleScene:
 
     def update(self, dt):
         self.atk_general_cd = {k: max(0, v - dt) for k, v in self.atk_general_cd.items()}
+        spawned_projectiles = []
         for s in self.squads:
             if s.hp <= 0:
                 continue
@@ -112,11 +114,25 @@ class BattleScene:
                 else:
                     s.fatigue = max(0, s.fatigue - 3 * dt)
             if dist <= s.card.stats["range"]:
-                hit = s.card.stats["accuracy"] + (0.08 if self.highground.collidepoint(s.pos) else 0)
-                if random.random() < hit * dt * 4.5:
-                    flank = 1.2 if abs(nearest.pos.y - s.pos.y) > 80 else 1.0
-                    nearest.hp -= s.card.stats["damage"] * flank
-                    nearest.morale -= 5 * flank
+                accuracy = s.card.stats["accuracy"] + (0.08 if self.highground.collidepoint(s.pos) else 0)
+                fire_chance = dt * 4.5
+                if random.random() < fire_chance:
+                    direction = (nearest.pos - s.pos)
+                    if direction.length_squared() > 0:
+                        direction = direction.normalize()
+                        start = s.pos + direction * 18
+                        speed = 620
+                        travel_time = min(0.8, max(0.08, dist / speed))
+                        spawned_projectiles.append({
+                            "pos": pygame.Vector2(start),
+                            "vel": direction * speed,
+                            "ttl": travel_time,
+                            "color": (255, 70, 70) if s.team == "attacker" else (80, 220, 255),
+                        })
+                    if random.random() < accuracy:
+                        flank = 1.2 if abs(nearest.pos.y - s.pos.y) > 80 else 1.0
+                        nearest.hp -= s.card.stats["damage"] * flank
+                        nearest.morale -= 5 * flank
             if dist < 32:
                 nearest.hp -= s.card.stats["melee"] * dt * 3
                 nearest.morale -= 6 * dt
@@ -131,6 +147,11 @@ class BattleScene:
             self.result = "defeat"
         elif not dfd:
             self.result = "victory"
+        self.projectiles.extend(spawned_projectiles)
+        for pr in self.projectiles:
+            pr["pos"] += pr["vel"] * dt
+            pr["ttl"] -= dt
+        self.projectiles = [pr for pr in self.projectiles if pr["ttl"] > 0]
         for sq in self.squads:
             sq.card.hp = max(0, sq.hp)
 
@@ -146,8 +167,13 @@ class BattleScene:
                 pygame.draw.rect(self.screen, (255, 255, 255), rect, 2)
             hpw = max(0, int(28 * (s.hp / max(1, s.card.stats["health"]))))
             mw = max(0, int(28 * (s.morale / 100)))
+            name_text = self.small.render(s.card.name, True, (235, 235, 235))
+            self.screen.blit(name_text, (rect.centerx - name_text.get_width() // 2, rect.y - 22))
             pygame.draw.rect(self.screen, (180, 20, 20), (rect.x, rect.y - 8, hpw, 4))
             pygame.draw.rect(self.screen, (50, 160, 230), (rect.x, rect.y - 3, mw, 3))
+        for pr in self.projectiles:
+            tail = pr["pos"] - pr["vel"] * 0.03
+            pygame.draw.line(self.screen, pr["color"], pr["pos"], tail, 2)
         info = "LMB select | RMB move/attack | 1 line 2 column 3 brace | R rally | O orbital"
         self.screen.blit(self.font.render(info, True, (235, 235, 235)), (18, 730))
         self.screen.blit(self.big.render("BATTLE", True, (245, 245, 210)), (620, 12))
