@@ -179,6 +179,7 @@ class App:
                     if merged_into:
                         gs.selected_army = merged_into
                     gs.selected_planet = p.name
+                    self.check_for_battles(army.faction_id)
                     break
 
     def open_recruit_screen(self):
@@ -508,6 +509,10 @@ class App:
 
     def end_turn(self):
         gs = self.gs
+        if self.pending_battle:
+            gs.message = "Resolve the pending battle before ending the turn."
+            return
+
         self._cleanup_destroyed_armies()
         order = list(gs.factions.keys())
         start = order.index(gs.current_faction)
@@ -529,6 +534,8 @@ class App:
                 run_ai_turn(gs, fid)
             self._cleanup_destroyed_armies()
             self.check_for_battles(fid)
+            if self.pending_battle:
+                break
 
         self.trigger_revolutionaries()
         gs.turn += 1
