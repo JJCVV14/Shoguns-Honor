@@ -35,6 +35,7 @@ class App:
         self.last_battle = {"title": "", "detail": ""}
         self.recruit_items = []
         self.build_items = []
+        self.research_items = []
 
     def run(self):
         while True:
@@ -79,6 +80,8 @@ class App:
             self.handle_build_event(e)
         elif self.mode == "army_view" and self.gs:
             self.handle_army_view_event(e)
+        elif self.mode == "research" and self.gs:
+            self.handle_research_event(e)
         elif self.mode == "battle_result":
             if e.type == pygame.KEYDOWN or (e.type == pygame.MOUSEBUTTONDOWN and e.button == 1):
                 self.mode = "campaign"
@@ -94,7 +97,6 @@ class App:
                 continue
             allowed_names = {u["name"] for u in gs.unit_db[army.faction_id]}
             army.units = [u for u in army.units if u.name in allowed_names]
-        self.ensure_planet_garrisons()
 
     def handle_campaign_event(self, e):
         gs = self.gs
@@ -115,7 +117,7 @@ class App:
             elif pygame.Rect(1170, 445, 170, 34).collidepoint(e.pos):
                 self.open_army_view()
             elif pygame.Rect(1170, 310, 170, 34).collidepoint(e.pos):
-                self.start_research_player()
+                self.open_research_screen()
             elif pygame.Rect(1170, 355, 170, 34).collidepoint(e.pos):
                 self.tax_adjust(0.1)
             elif pygame.Rect(1170, 400, 170, 34).collidepoint(e.pos):
@@ -125,8 +127,8 @@ class App:
                     if (p.x - e.pos[0]) ** 2 + (p.y - e.pos[1]) ** 2 < 20 ** 2:
                         gs.selected_planet = p.name
                         gs.selected_army = next(
-                            (a.id for a in gs.armies.values() if a.planet == p.name and a.faction_id == gs.player_faction),
-                            None,
+                            (a.id for a in gs.armies.values() if a.planet == p.name and a.faction_id == gs.player_faction and not a.is_planet_garrison),
+                            next((a.id for a in gs.armies.values() if a.planet == p.name and a.faction_id == gs.player_faction), None),
                         )
                         break
 
@@ -141,6 +143,9 @@ class App:
                     if p.owner == "neutral":
                         p.owner = army.faction_id
                         gs.message = f"{gs.factions[army.faction_id].name} peacefully claims {p.name}."
+                    merged_into = self.merge_friendly_armies(p.name, army.faction_id, keep_army_id=army.id)
+                    if merged_into:
+                        gs.selected_army = merged_into
                     gs.selected_planet = p.name
                     break
 
@@ -180,16 +185,6 @@ class App:
         planet = gs.planets[gs.selected_planet]
         faction = gs.factions[gs.player_faction]
 
-        if not gs.selected_army:
-            gs.message = "Select your army on this planet before recruiting."
-            return
-
-        army = gs.armies[gs.selected_army]
-        if army.planet != planet.name:
-            gs.message = "Selected army must be on the recruitment planet."
-            return
-
-
         turns = max(1, 4 - planet.military)
         if faction.treasury < unit["cost"]:
             gs.message = "Insufficient funds."
@@ -199,7 +194,6 @@ class App:
         gs.recruit_queue.append(
             {
                 "faction": gs.player_faction,
-                "army": army.id,
                 "planet": planet.name,
                 "unit": unit["name"],
                 "turns": turns,
@@ -219,15 +213,71 @@ class App:
 
         for i in reversed(finished_indexes):
             item = gs.recruit_queue.pop(i)
-            army = gs.armies.get(item["army"])
-            if not army or army.faction_id != item["faction"]:
-                continue
-
             template = next((u for u in gs.unit_db[item["faction"]] if u["name"] == item["unit"]), None)
             if template:
-                army.units.append(UnitCard.from_template(template))
+                new_army = Army(
+                    id=gs.next_army_id,
+                    faction_id=item["faction"],
+                    planet=item["planet"],
+                    general=General(name="New Detachment"),
+                    units=[UnitCard.from_template(template)],
+                    movement=0,
+                    is_planet_garrison=False,
+                    can_move=True,
+                )
+                gs.armies[gs.next_army_id] = new_army
+                gs.next_army_id += 1
                 if item["faction"] == gs.player_faction:
-                    gs.message = f"{item['unit']} is ready at {item['planet']}."
+                    gs.message = f"{item['unit']} is ready at {item['planet']} as a new army."
+
+    def merge_friendly_armies(self, planet_name, faction_id, keep_army_id=None):
+        gs = self.gs
+        friendly = [
+            a for a in gs.armies.values()
+            if a.planet == planet_name and a.faction_id == faction_id and len(a.units) > 0
+        ]
+        if len(friendly) < 2:
+            return keep_army_id
+
+        if keep_army_id and keep_army_id in gs.armies:
+            base = gs.armies[keep_army_id]
+        else:
+            base = max(friendly, key=lambda a: len(a.units))
+
+        for army in list(friendly):
+            if army.id == base.id:
+                continue
+            base.units.extend(army.units)
+            base.movement = min(base.movement, army.movement)
+            gs.armies.pop(army.id, None)
+
+        return base.id
+
+    def open_research_screen(self):
+        gs = self.gs
+        fac = gs.factions[gs.player_faction]
+        self.research_items = [t for t in gs.tech_db if t["id"] not in fac.unlocked_techs]
+        self.mode = "research"
+
+    def handle_research_event(self, e):
+        gs = self.gs
+        if e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
+            self.mode = "campaign"
+            return
+
+        if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
+            if pygame.Rect(30, 680, 210, 38).collidepoint(e.pos):
+                self.mode = "campaign"
+                return
+            if pygame.Rect(260, 680, 210, 38).collidepoint(e.pos):
+                self.start_research_player()
+                self.mode = "campaign"
+                return
+            for i, tech in enumerate(self.research_items):
+                if pygame.Rect(45, 120 + i * 90, 1100, 80).collidepoint(e.pos):
+                    self.start_research_player(tech["id"])
+                    self.mode = "campaign"
+                    return
 
     def open_build_screen(self):
         gs = self.gs
@@ -292,8 +342,16 @@ class App:
         if e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
             self.mode = "campaign"
             return
-        if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1 and pygame.Rect(30, 680, 210, 38).collidepoint(e.pos):
-            self.mode = "campaign"
+        if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
+            if pygame.Rect(30, 680, 210, 38).collidepoint(e.pos):
+                self.mode = "campaign"
+                return
+            if pygame.Rect(260, 680, 210, 38).collidepoint(e.pos) and self.gs and self.gs.selected_army:
+                army = self.gs.armies.get(self.gs.selected_army)
+                if army:
+                    merged_id = self.merge_friendly_armies(army.planet, army.faction_id, keep_army_id=army.id)
+                    self.gs.selected_army = merged_id
+                    self.gs.message = "Friendly armies merged on planet."
 
     def ensure_planet_garrisons(self):
         gs = self.gs
@@ -343,19 +401,25 @@ class App:
             gs.next_army_id += 1
             gs.message = f"Revolutionaries have seized {planet.name}!"
 
-    def start_research_player(self):
+    def start_research_player(self, tech_id=None):
         gs = self.gs
         fac = gs.factions[gs.player_faction]
         if fac.research_target:
+            gs.message = "Research already in progress."
             return
 
-        for t in gs.tech_db:
-            if t["id"] not in fac.unlocked_techs and fac.treasury >= t["cost"]:
+        options = [t for t in gs.tech_db if t["id"] not in fac.unlocked_techs]
+        if tech_id:
+            options = [t for t in options if t["id"] == tech_id]
+
+        for t in options:
+            if fac.treasury >= t["cost"]:
                 fac.treasury -= t["cost"]
                 fac.research_target = t["id"]
-                fac.research_left = t["turns"]
-                gs.message = f"Research started: {t['name']}"
+                fac.research_left = max(1, int(t["turns"] / max(0.1, fac.research_mod)))
+                gs.message = f"Research started: {t['name']} ({fac.research_left} turns)"
                 return
+        gs.message = "Cannot start research (insufficient funds or no valid option)."
 
     def tax_adjust(self, delta):
         gs = self.gs
@@ -422,7 +486,6 @@ class App:
             self.check_for_battles(fid)
 
         self.trigger_revolutionaries()
-        self.ensure_planet_garrisons()
         gs.turn += 1
         self.check_victory()
 
@@ -443,9 +506,9 @@ class App:
 
         if attacker_won:
             gs.planets[planet_name].owner = atk.faction_id
-            dfd.units = [u for u in dfd.units if u.hp > 35]
-        else:
-            atk.units = [u for u in atk.units if u.hp > 35]
+
+        atk.units = [u for u in atk.units if u.hp > 0]
+        dfd.units = [u for u in dfd.units if u.hp > 0]
 
         if not atk.units:
             gs.armies.pop(atk.id, None)
@@ -543,6 +606,8 @@ class App:
             self.draw_build()
         elif self.mode == "army_view" and self.gs:
             self.draw_army_view()
+        elif self.mode == "research" and self.gs:
+            self.draw_research()
         elif self.mode == "battle_result":
             self.draw_battle_result()
 
@@ -610,6 +675,36 @@ class App:
             txt = f"{unit.name} | HP:{unit.hp:.0f}/{unit.stats['health']} | DMG:{unit.stats['damage']} ARM:{unit.stats['armor']} RNG:{unit.stats['range']} SPD:{unit.stats['speed']}"
             self.screen.blit(self.font.render(txt, True, (235, 235, 235)), (58, 118 + i * 60))
         Button((30, 680, 210, 38), "Back to Campaign").draw(self.screen, self.font)
+        Button((260, 680, 210, 38), "Merge Armies Here").draw(self.screen, self.font)
+
+    @staticmethod
+    def _tech_effects_text(effects):
+        if not effects:
+            return "No direct effects."
+        return ", ".join(f"{k}: {v}" for k, v in effects.items())
+
+    def draw_research(self):
+        gs = self.gs
+        fac = gs.factions[gs.player_faction]
+        self.screen.fill((18, 20, 28))
+        self.screen.blit(self.big.render("Research", True, (240, 240, 240)), (40, 35))
+        current = fac.research_target or "None"
+        self.screen.blit(self.font.render(f"Current project: {current}", True, (225, 225, 225)), (40, 75))
+        if fac.research_target:
+            self.screen.blit(self.font.render(f"Turns left: {fac.research_left}", True, (225, 225, 225)), (280, 75))
+
+        for i, tech in enumerate(self.research_items):
+            row = pygame.Rect(45, 120 + i * 90, 1100, 80)
+            pygame.draw.rect(self.screen, (50, 56, 70), row)
+            pygame.draw.rect(self.screen, (180, 180, 200), row, 1)
+            turns = max(1, int(tech["turns"] / max(0.1, fac.research_mod)))
+            header = f"{tech['name']} ({tech['id']}) | Cost: {tech['cost']} | Time: {turns} turns"
+            desc = self._tech_effects_text(tech.get("effects", {}))
+            self.screen.blit(self.font.render(header, True, (235, 235, 235)), (58, 142 + i * 90))
+            self.screen.blit(self.font.render(desc, True, (210, 220, 240)), (58, 168 + i * 90))
+
+        Button((30, 680, 210, 38), "Back to Campaign").draw(self.screen, self.font)
+        Button((260, 680, 210, 38), "Auto Pick").draw(self.screen, self.font)
 
     def draw_campaign(self):
         gs = self.gs
