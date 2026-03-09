@@ -6,7 +6,7 @@ from battle.autoresolve import resolve as auto_resolve
 from battle.battle_scene import BattleScene
 from game.ai import run_ai_turn, start_research_if_idle
 from game.save_load import load_campaign, save_campaign
-from game.state import GameState, Army, UnitCard, new_campaign
+from game.state import GameState, UnitCard, new_campaign
 from settings import SCREEN_HEIGHT, SCREEN_WIDTH, FPS, SAVE_FILE
 
 
@@ -20,9 +20,6 @@ class Button:
         pygame.draw.rect(screen, (180, 180, 200), self.rect, 1)
         screen.blit(font.render(self.text, True, (240, 240, 240)), (self.rect.x + 8, self.rect.y + 8))
 
-    def hit(self, pos):
-        return self.rect.collidepoint(pos)
-
 
 class App:
     def __init__(self):
@@ -35,10 +32,12 @@ class App:
         self.mode = "menu"
         self.gs: GameState | None = None
         self.pending_battle = None
+        self.last_battle = {"title": "", "detail": ""}
+        self.recruit_items = []
 
     def run(self):
         while True:
-            dt = self.clock.tick(FPS)
+            self.clock.tick(FPS)
             for e in pygame.event.get():
                 if e.type == pygame.QUIT:
                     return
@@ -56,6 +55,7 @@ class App:
                     loaded = load_campaign(SAVE_FILE)
                     if loaded:
                         self.gs = loaded
+                        self._sanitize_armies()
                         self.mode = "campaign"
                 if 560 < x < 820 and 330 < y < 375:
                     self.mode = "help"
@@ -70,17 +70,30 @@ class App:
                 for i, fid in enumerate(factions):
                     if pygame.Rect(460, 180 + i * 90, 420, 70).collidepoint(e.pos):
                         self.gs = new_campaign(fid)
+                        self._sanitize_armies()
                         self.mode = "campaign"
+        elif self.mode == "recruit" and self.gs:
+            self.handle_recruit_event(e)
+        elif self.mode == "battle_result":
+            if e.type == pygame.KEYDOWN or (e.type == pygame.MOUSEBUTTONDOWN and e.button == 1):
+                self.mode = "campaign"
         elif self.mode == "campaign" and self.gs:
             if e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
                 pygame.event.post(pygame.event.Event(pygame.QUIT))
             self.handle_campaign_event(e)
 
+    def _sanitize_armies(self):
+        gs = self.gs
+        for army in gs.armies.values():
+            allowed_names = {u["name"] for u in gs.unit_db[army.faction_id]}
+            army.units = [u for u in army.units if u.name in allowed_names]
+
     def handle_campaign_event(self, e):
         gs = self.gs
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
             if pygame.Rect(1170, 20, 170, 40).collidepoint(e.pos):
-                save_campaign(gs, SAVE_FILE); gs.message = "Saved."
+                save_campaign(gs, SAVE_FILE)
+                gs.message = "Saved."
             elif pygame.Rect(1170, 70, 170, 40).collidepoint(e.pos):
                 self.end_turn()
             elif pygame.Rect(1170, 120, 170, 40).collidepoint(e.pos):
@@ -88,7 +101,7 @@ class App:
             elif pygame.Rect(1170, 170, 170, 40).collidepoint(e.pos):
                 self.auto_or_manual_battle(auto=False)
             elif pygame.Rect(1170, 220, 170, 34).collidepoint(e.pos):
-                self.recruit_selected()
+                self.open_recruit_screen()
             elif pygame.Rect(1170, 265, 170, 34).collidepoint(e.pos):
                 self.build_selected()
             elif pygame.Rect(1170, 310, 170, 34).collidepoint(e.pos):
@@ -101,8 +114,12 @@ class App:
                 for p in gs.planets.values():
                     if (p.x - e.pos[0]) ** 2 + (p.y - e.pos[1]) ** 2 < 20 ** 2:
                         gs.selected_planet = p.name
-                        gs.selected_army = next((a.id for a in gs.armies.values() if a.planet == p.name and a.faction_id == gs.player_faction), None)
+                        gs.selected_army = next(
+                            (a.id for a in gs.armies.values() if a.planet == p.name and a.faction_id == gs.player_faction),
+                            None,
+                        )
                         break
+
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 3 and gs.selected_army:
             army = gs.armies.get(gs.selected_army)
             if not army or army.movement <= 0:
@@ -117,46 +134,114 @@ class App:
                     gs.selected_planet = p.name
                     break
 
-    def recruit_selected(self):
+    def open_recruit_screen(self):
         gs = self.gs
         if not gs.selected_planet:
+            gs.message = "Select a planet first."
             return
-        p = gs.planets[gs.selected_planet]
-        faction = gs.factions[gs.player_faction]
-        if p.owner != gs.player_faction:
+
+        planet = gs.planets[gs.selected_planet]
+        if planet.owner != gs.player_faction:
             gs.message = "Must own planet to recruit."
             return
+
+        military_req = max(1, planet.military + (1 if "Vehicle Depot" in planet.buildings else 0))
+        self.recruit_items = [u for u in gs.unit_db[gs.player_faction] if u["req"] <= military_req]
+        self.mode = "recruit"
+
+    def handle_recruit_event(self, e):
+        gs = self.gs
+        if e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
+            self.mode = "campaign"
+            return
+
+        if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
+            if pygame.Rect(30, 680, 210, 38).collidepoint(e.pos):
+                self.mode = "campaign"
+                return
+            for i, unit in enumerate(self.recruit_items):
+                if pygame.Rect(45, 120 + i * 80, 980, 70).collidepoint(e.pos):
+                    self.queue_recruitment(unit)
+                    self.mode = "campaign"
+                    return
+
+    def queue_recruitment(self, unit):
+        gs = self.gs
+        planet = gs.planets[gs.selected_planet]
+        faction = gs.factions[gs.player_faction]
+
         if not gs.selected_army:
-            gs.message = "Select own army at planet."
+            gs.message = "Select your army on this planet before recruiting."
             return
+
         army = gs.armies[gs.selected_army]
+        if army.planet != planet.name:
+            gs.message = "Selected army must be on the recruitment planet."
+            return
+
         if len(army.units) >= 12:
+            gs.message = "Army is already at unit capacity."
             return
-        options = [u for u in gs.unit_db[gs.player_faction] if u["req"] <= max(1, p.military + (1 if "Vehicle Depot" in p.buildings else 0))]
-        if not options:
+
+        turns = max(1, 4 - planet.military)
+        if faction.treasury < unit["cost"]:
+            gs.message = "Insufficient funds."
             return
-        unit = options[-1] if faction.treasury > 250 else options[0]
-        if faction.treasury >= unit["cost"]:
-            faction.treasury -= unit["cost"]
-            army.units.append(UnitCard.from_template(unit))
-            gs.message = f"Recruited {unit['name']}"
+
+        faction.treasury -= unit["cost"]
+        gs.recruit_queue.append(
+            {
+                "faction": gs.player_faction,
+                "army": army.id,
+                "planet": planet.name,
+                "unit": unit["name"],
+                "turns": turns,
+            }
+        )
+        gs.message = f"Recruiting {unit['name']} at {planet.name} ({turns} turn(s))."
+
+    def resolve_recruitment(self, fid):
+        gs = self.gs
+        finished_indexes = []
+        for i, item in enumerate(gs.recruit_queue):
+            if item["faction"] != fid:
+                continue
+            item["turns"] -= 1
+            if item["turns"] <= 0:
+                finished_indexes.append(i)
+
+        for i in reversed(finished_indexes):
+            item = gs.recruit_queue.pop(i)
+            army = gs.armies.get(item["army"])
+            if not army or army.faction_id != item["faction"]:
+                continue
+            if len(army.units) >= 12:
+                continue
+
+            template = next((u for u in gs.unit_db[item["faction"]] if u["name"] == item["unit"]), None)
+            if template:
+                army.units.append(UnitCard.from_template(template))
+                if item["faction"] == gs.player_faction:
+                    gs.message = f"{item['unit']} is ready at {item['planet']}."
 
     def build_selected(self):
         gs = self.gs
         if not gs.selected_planet:
             return
-        p = gs.planets[gs.selected_planet]
+
+        planet = gs.planets[gs.selected_planet]
         faction = gs.factions[gs.player_faction]
-        if p.owner != gs.player_faction or len(p.buildings) >= p.slots:
+        if planet.owner != gs.player_faction or len(planet.buildings) >= planet.slots:
             return
-        choices = [b for b in gs.buildings_db if b not in p.buildings]
-        for b in choices:
-            c = gs.buildings_db[b]["cost"]
-            if faction.treasury >= c:
-                faction.treasury -= c
-                p.buildings.append(b)
-                p.military += gs.buildings_db[b].get("military", 0)
-                gs.message = f"Built {b}"
+
+        choices = [b for b in gs.buildings_db if b not in planet.buildings]
+        for building in choices:
+            cost = gs.buildings_db[building]["cost"]
+            if faction.treasury >= cost:
+                faction.treasury -= cost
+                planet.buildings.append(building)
+                planet.military += gs.buildings_db[building].get("military", 0)
+                gs.message = f"Built {building}"
                 return
 
     def start_research_player(self):
@@ -164,6 +249,7 @@ class App:
         fac = gs.factions[gs.player_faction]
         if fac.research_target:
             return
+
         for t in gs.tech_db:
             if t["id"] not in fac.unlocked_techs and fac.treasury >= t["cost"]:
                 fac.treasury -= t["cost"]
@@ -191,6 +277,7 @@ class App:
         gs = self.gs
         fac = gs.factions[fid]
         econ_bonus = 0.1 if "econ_1" in fac.unlocked_techs else 0.0
+
         income = 0
         upkeep = 0
         for p in gs.planets.values():
@@ -203,27 +290,32 @@ class App:
                 if p.unrest > 25 and p.stability < 55:
                     p.owner = "neutral"
                     p.unrest = 0
+
         for a in gs.armies.values():
             if a.faction_id == fid:
                 upkeep += sum(u.stats["upkeep"] for u in a.units)
+
         fac.treasury += income - upkeep
 
     def end_turn(self):
         gs = self.gs
         order = list(gs.factions.keys())
         start = order.index(gs.current_faction)
+
         for i in range(1, len(order) + 1):
             fid = order[(start + i) % len(order)]
             gs.current_faction = fid
-            for a in gs.armies.values():
-                if a.faction_id == fid:
-                    a.movement = 2 if "logistics_1" in gs.factions[fid].unlocked_techs else 1
+            for army in gs.armies.values():
+                if army.faction_id == fid:
+                    army.movement = 2 if "logistics_1" in gs.factions[fid].unlocked_techs else 1
             self.resolve_research(fid)
+            self.resolve_recruitment(fid)
             self.compute_income(fid)
             if fid != gs.player_faction:
                 start_research_if_idle(gs, fid)
                 run_ai_turn(gs, fid)
             self.check_for_battles(fid)
+
         gs.turn += 1
         self.check_victory()
 
@@ -239,32 +331,60 @@ class App:
                 gs.selected_planet = p.name
                 return
 
+    def _resolve_battle_outcome(self, attacker_won: bool, planet_name: str, atk, dfd):
+        gs = self.gs
+
+        if attacker_won:
+            gs.planets[planet_name].owner = atk.faction_id
+            dfd.units = [u for u in dfd.units if u.hp > 35]
+        else:
+            atk.units = [u for u in atk.units if u.hp > 35]
+
+        if not atk.units:
+            gs.armies.pop(atk.id, None)
+        if not dfd.units:
+            gs.armies.pop(dfd.id, None)
+
+        winner_faction = atk.faction_id if attacker_won else dfd.faction_id
+        player_won = winner_faction == gs.player_faction
+
+        self.last_battle = {
+            "title": "VICTORY" if player_won else "DEFEAT",
+            "detail": (
+                f"Battle of {planet_name}: "
+                f"{gs.factions[atk.faction_id].name} vs {gs.factions[dfd.faction_id].name}. "
+                f"Winner: {gs.factions[winner_faction].name}"
+            ),
+        }
+
     def auto_or_manual_battle(self, auto=True):
         gs = self.gs
         if not self.pending_battle:
             gs.message = "No pending battle."
             return
+
         planet_name, atk_id, dfd_id = self.pending_battle
         atk = gs.armies.get(atk_id)
         dfd = gs.armies.get(dfd_id)
         if not atk or not dfd:
             self.pending_battle = None
             return
+
         if auto:
-            winner = auto_resolve(atk, dfd)
-            result = "victory" if winner == "attacker" and atk.faction_id == gs.player_faction else "defeat"
+            attacker_won = auto_resolve(atk, dfd) == "attacker"
         else:
-            result = BattleScene(self.screen, atk, dfd, gs.factions[atk.faction_id].color, gs.factions[dfd.faction_id].color).run()
-        if result == "victory":
-            gs.planets[planet_name].owner = atk.faction_id
-            dfd.units = [u for u in dfd.units if u.hp > 35]
-        elif result == "defeat":
-            atk.units = [u for u in atk.units if u.hp > 35]
-        if not atk.units:
-            gs.armies.pop(atk.id, None)
-        if not dfd.units:
-            gs.armies.pop(dfd.id, None)
+            result = BattleScene(
+                self.screen,
+                atk,
+                dfd,
+                gs.factions[atk.faction_id].color,
+                gs.factions[dfd.faction_id].color,
+            ).run()
+            attacker_won = result == "victory"
+
+        self._resolve_battle_outcome(attacker_won, planet_name, atk, dfd)
         self.pending_battle = None
+        self.mode = "battle_result"
         self.check_victory()
 
     def check_victory(self):
@@ -272,6 +392,7 @@ class App:
         player = gs.player_faction
         owned = [p for p in gs.planets.values() if p.owner == player]
         enemies = [f for f in gs.factions if f != player and any(p.owner == f for p in gs.planets.values())]
+
         if len(owned) >= 10 or not enemies:
             gs.message = "Victory achieved! Press ESC to quit."
         if not any(a.faction_id == player for a in gs.armies.values()) and not any(p.owner == player for p in gs.planets.values()):
@@ -285,24 +406,67 @@ class App:
                 Button((560, 210 + i * 60, 260, 45), label).draw(self.screen, self.font)
         elif self.mode == "help":
             self.screen.fill((15, 15, 20))
-            tips = ["Campaign: LMB select planet, RMB move selected army.", "Buttons: recruit, build, research, tax, end turn.", "If hostile armies share a planet, launch battle or auto-resolve.", "Battle: LMB select squads, RMB order, 1/2/3 formations, R/O abilities.", "Save from campaign panel. Press any key to return."]
+            tips = [
+                "Campaign: LMB select planet, RMB move selected army.",
+                "Buttons: recruit, build, research, tax, end turn.",
+                "If hostile armies share a planet, launch battle or auto-resolve.",
+                "Battle: LMB select squads, RMB order, 1/2/3 formations, R/O abilities.",
+                "Save from campaign panel. Press any key to return.",
+            ]
             for i, t in enumerate(tips):
                 self.screen.blit(self.font.render(t, True, (230, 230, 230)), (150, 180 + i * 34))
         elif self.mode == "faction_select":
             self.screen.fill((18, 15, 24))
             self.screen.blit(self.big.render("Choose Faction", True, (240, 240, 240)), (560, 110))
-            for i, fid in enumerate(["empire", "rebels", "republic", "separatists"]):
+            for i, (_, label) in enumerate([
+                ("empire", "EMPIRE"),
+                ("rebels", "REBELS"),
+                ("republic", "REPUBLIC"),
+                ("separatists", "CONFEDERACY"),
+            ]):
                 row = pygame.Rect(460, 180 + i * 90, 420, 70)
                 pygame.draw.rect(self.screen, (50, 50, 65), row)
                 pygame.draw.rect(self.screen, (190, 190, 220), row, 1)
-                self.screen.blit(self.font.render(fid.upper(), True, (240, 240, 240)), (480, 208 + i * 90))
+                self.screen.blit(self.font.render(label, True, (240, 240, 240)), (480, 208 + i * 90))
         elif self.mode == "campaign" and self.gs:
             self.draw_campaign()
+        elif self.mode == "recruit" and self.gs:
+            self.draw_recruit()
+        elif self.mode == "battle_result":
+            self.draw_battle_result()
+
+    def draw_battle_result(self):
+        self.screen.fill((18, 18, 24))
+        title_color = (80, 220, 120) if self.last_battle["title"] == "VICTORY" else (240, 90, 90)
+        self.screen.blit(self.big.render(self.last_battle["title"], True, title_color), (620, 250))
+        self.screen.blit(self.font.render(self.last_battle["detail"], True, (230, 230, 230)), (330, 320))
+        self.screen.blit(self.font.render("Press any key/click to continue.", True, (230, 230, 230)), (550, 390))
+
+    def draw_recruit(self):
+        gs = self.gs
+        planet = gs.planets[gs.selected_planet]
+        self.screen.fill((20, 22, 30))
+        self.screen.blit(self.big.render(f"Recruitment - {planet.name}", True, (240, 240, 240)), (40, 35))
+        self.screen.blit(self.font.render("Click a unit to queue recruitment. ESC or Back to close.", True, (220, 220, 220)), (40, 75))
+
+        for i, unit in enumerate(self.recruit_items):
+            row = pygame.Rect(45, 120 + i * 80, 980, 70)
+            pygame.draw.rect(self.screen, (50, 56, 70), row)
+            pygame.draw.rect(self.screen, (180, 180, 200), row, 1)
+            turns = max(1, 4 - planet.military)
+            text = (
+                f"{unit['name']} | Cost: {unit['cost']} | Recruit at: {planet.name} | Time: {turns} turn(s) | "
+                f"HP:{unit['health']} DMG:{unit['damage']} ARM:{unit['armor']} RNG:{unit['range']} SPD:{unit['speed']}"
+            )
+            self.screen.blit(self.font.render(text, True, (235, 235, 235)), (58, 145 + i * 80))
+
+        Button((30, 680, 210, 38), "Back to Campaign").draw(self.screen, self.font)
 
     def draw_campaign(self):
         gs = self.gs
         self.screen.fill((22, 26, 35))
         pygame.draw.rect(self.screen, (25, 32, 44), (0, 0, 1150, SCREEN_HEIGHT))
+
         for p in gs.planets.values():
             color = (130, 130, 130) if p.owner == "neutral" else tuple(gs.factions[p.owner].color)
             for n in p.connections:
@@ -311,24 +475,44 @@ class App:
             pygame.draw.circle(self.screen, color, (p.x, p.y), 14)
             pygame.draw.circle(self.screen, (230, 230, 230), (p.x, p.y), 14, 1)
             self.screen.blit(self.font.render(p.name, True, (230, 230, 230)), (p.x + 16, p.y - 8))
+
         for a in gs.armies.values():
             p = gs.planets[a.planet]
-            pygame.draw.rect(self.screen, (250, 250, 250), (p.x - 5, p.y - 26, 10, 10))
+            pygame.draw.rect(self.screen, tuple(gs.factions[a.faction_id].color), (p.x - 5, p.y - 26, 10, 10))
             self.screen.blit(self.font.render(str(len(a.units)), True, (250, 250, 250)), (p.x - 6, p.y - 40))
+
         panel = pygame.Rect(1150, 0, 216, SCREEN_HEIGHT)
         pygame.draw.rect(self.screen, (35, 36, 48), panel)
         top = gs.factions[gs.player_faction]
-        lines = [f"Turn {gs.turn}", f"Treasury: {top.treasury}", f"Tax: {top.tax_rate:.1f}", f"Research: {top.research_target or 'None'}", f"Pending battle: {'Yes' if self.pending_battle else 'No'}"]
-        for i, ln in enumerate(lines):
-            self.screen.blit(self.font.render(ln, True, (235, 235, 235)), (1160, 460 + i * 24))
-        for i, label in enumerate(["Save", "End Turn", "Auto Resolve", "Manual Battle", "Recruit Unit", "Build", "Research", "Tax +", "Tax -"]):
+        lines = [
+            f"Turn {gs.turn}",
+            f"Treasury: {top.treasury}",
+            f"Tax: {top.tax_rate:.1f}",
+            f"Research: {top.research_target or 'None'}",
+            f"Pending battle: {'Yes' if self.pending_battle else 'No'}",
+            f"Queued recruits: {len([q for q in gs.recruit_queue if q['faction'] == gs.player_faction])}",
+        ]
+        for i, line in enumerate(lines):
+            self.screen.blit(self.font.render(line, True, (235, 235, 235)), (1160, 460 + i * 24))
+
+        labels = ["Save", "End Turn", "Auto Resolve", "Manual Battle", "Recruit Unit", "Build", "Research", "Tax +", "Tax -"]
+        for i, label in enumerate(labels):
             y = 20 + i * 50 if i < 4 else 220 + (i - 4) * 45
             Button((1170, y, 170, 40 if i < 4 else 34), label).draw(self.screen, self.font)
+
         if gs.selected_planet:
             p = gs.planets[gs.selected_planet]
-            details = [f"Planet: {p.name}", f"Owner: {p.owner}", f"Stability: {p.stability - p.unrest}", f"Income est: {p.income(top.tax_rate)}", f"Military: {p.military}", f"Buildings: {', '.join(p.buildings) or 'None'}"]
+            details = [
+                f"Planet: {p.name}",
+                f"Owner: {p.owner}",
+                f"Stability: {p.stability - p.unrest}",
+                f"Income est: {p.income(top.tax_rate)}",
+                f"Military: {p.military}",
+                f"Buildings: {', '.join(p.buildings) or 'None'}",
+            ]
             for i, d in enumerate(details):
                 self.screen.blit(self.font.render(d, True, (240, 240, 210)), (20, 620 + i * 22))
+
         self.screen.blit(self.font.render(gs.message, True, (255, 210, 90)), (20, 22))
 
 
