@@ -140,6 +140,11 @@ class BattleScene:
             s.morale -= (0.03 * casualty_factor + 0.02 * s.fatigue) * dt
             if s.morale < 20:
                 s.routing = True
+        # Persist squad HP back to campaign units *before* removing dead squads.
+        # Otherwise a squad that dies in battle can keep stale HP on its card.
+        for sq in self.squads:
+            sq.card.hp = max(0, sq.hp)
+
         self.squads = [s for s in self.squads if s.hp > 0]
         atk = [s for s in self.squads if s.team == "attacker"]
         dfd = [s for s in self.squads if s.team == "defender"]
@@ -152,9 +157,6 @@ class BattleScene:
             pr["pos"] += pr["vel"] * dt
             pr["ttl"] -= dt
         self.projectiles = [pr for pr in self.projectiles if pr["ttl"] > 0]
-        for sq in self.squads:
-            sq.card.hp = max(0, sq.hp)
-
     def draw(self):
         self.screen.fill((28, 35, 40))
         pygame.draw.rect(self.screen, (65, 95, 70), self.highground)
