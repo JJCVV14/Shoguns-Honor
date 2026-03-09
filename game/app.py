@@ -10,6 +10,9 @@ from game.state import Army, GameState, General, UnitCard, new_campaign
 from settings import SCREEN_HEIGHT, SCREEN_WIDTH, FPS, SAVE_FILE
 
 
+MIN_UNIT_HP = 1.0
+
+
 class Button:
     def __init__(self, rect, text):
         self.rect = pygame.Rect(rect)
@@ -82,6 +85,8 @@ class App:
             self.handle_army_view_event(e)
         elif self.mode == "research" and self.gs:
             self.handle_research_event(e)
+        elif self.mode == "recruit_queue" and self.gs:
+            self.handle_recruit_queue_event(e)
         elif self.mode == "battle_result":
             if e.type == pygame.KEYDOWN or (e.type == pygame.MOUSEBUTTONDOWN and e.button == 1):
                 self.mode = "campaign"
@@ -97,9 +102,36 @@ class App:
                 continue
             allowed_names = {u["name"] for u in gs.unit_db[army.faction_id]}
             army.units = [u for u in army.units if u.name in allowed_names]
+        self._cleanup_destroyed_armies()
+
+    def _cleanup_destroyed_armies(self):
+        gs = self.gs
+        for army in gs.armies.values():
+            army.units = [u for u in army.units if u.hp > MIN_UNIT_HP]
+        for aid in [aid for aid, army in gs.armies.items() if not army.units]:
+            gs.armies.pop(aid, None)
+
+    def _capture_planet_if_uncontested(self, planet_name, faction_id):
+        gs = self.gs
+        planet = gs.planets[planet_name]
+        if planet.owner == faction_id:
+            return
+        hostile_armies = [
+            a for a in gs.armies.values()
+            if a.planet == planet_name and a.faction_id != faction_id and len(a.units) > 0
+        ]
+        if hostile_armies:
+            return
+        previous_owner = planet.owner
+        planet.owner = faction_id
+        if previous_owner == "neutral":
+            gs.message = f"{gs.factions[faction_id].name} peacefully claims {planet_name}."
+        else:
+            gs.message = f"{gs.factions[faction_id].name} captures undefended {planet_name}."
 
     def handle_campaign_event(self, e):
         gs = self.gs
+        self._cleanup_destroyed_armies()
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
             if pygame.Rect(1170, 20, 170, 40).collidepoint(e.pos):
                 save_campaign(gs, SAVE_FILE)
@@ -116,6 +148,8 @@ class App:
                 self.open_build_screen()
             elif pygame.Rect(1170, 445, 170, 34).collidepoint(e.pos):
                 self.open_army_view()
+            elif pygame.Rect(1170, 490, 170, 34).collidepoint(e.pos):
+                self.open_recruit_queue_screen()
             elif pygame.Rect(1170, 310, 170, 34).collidepoint(e.pos):
                 self.open_research_screen()
             elif pygame.Rect(1170, 355, 170, 34).collidepoint(e.pos):
@@ -140,9 +174,7 @@ class App:
                 if (p.x - e.pos[0]) ** 2 + (p.y - e.pos[1]) ** 2 < 20 ** 2 and p.name in gs.planets[army.planet].connections:
                     army.planet = p.name
                     army.movement -= 1
-                    if p.owner == "neutral":
-                        p.owner = army.faction_id
-                        gs.message = f"{gs.factions[army.faction_id].name} peacefully claims {p.name}."
+                    self._capture_planet_if_uncontested(p.name, army.faction_id)
                     merged_into = self.merge_friendly_armies(p.name, army.faction_id, keep_army_id=army.id)
                     if merged_into:
                         gs.selected_army = merged_into
@@ -179,6 +211,17 @@ class App:
                     self.queue_recruitment(unit)
                     self.mode = "campaign"
                     return
+
+    def open_recruit_queue_screen(self):
+        self.mode = "recruit_queue"
+
+    def handle_recruit_queue_event(self, e):
+        if e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
+            self.mode = "campaign"
+            return
+        if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
+            if pygame.Rect(30, 680, 210, 38).collidepoint(e.pos):
+                self.mode = "campaign"
 
     def queue_recruitment(self, unit):
         gs = self.gs
@@ -465,6 +508,7 @@ class App:
 
     def end_turn(self):
         gs = self.gs
+        self._cleanup_destroyed_armies()
         order = list(gs.factions.keys())
         start = order.index(gs.current_faction)
 
@@ -483,6 +527,7 @@ class App:
             if fid not in (gs.player_faction, "revolutionaries"):
                 start_research_if_idle(gs, fid)
                 run_ai_turn(gs, fid)
+            self._cleanup_destroyed_armies()
             self.check_for_battles(fid)
 
         self.trigger_revolutionaries()
@@ -507,13 +552,15 @@ class App:
         if attacker_won:
             gs.planets[planet_name].owner = atk.faction_id
 
-        atk.units = [u for u in atk.units if u.hp > 0]
-        dfd.units = [u for u in dfd.units if u.hp > 0]
+        atk.units = [u for u in atk.units if u.hp > MIN_UNIT_HP]
+        dfd.units = [u for u in dfd.units if u.hp > MIN_UNIT_HP]
 
         if not atk.units:
             gs.armies.pop(atk.id, None)
         if not dfd.units:
             gs.armies.pop(dfd.id, None)
+
+        self._capture_planet_if_uncontested(planet_name, atk.faction_id if attacker_won else dfd.faction_id)
 
         winner_faction = atk.faction_id if attacker_won else dfd.faction_id
         player_won = winner_faction == gs.player_faction
@@ -553,6 +600,7 @@ class App:
             attacker_won = result == "victory"
 
         self._resolve_battle_outcome(attacker_won, planet_name, atk, dfd)
+        self._cleanup_destroyed_armies()
         self.pending_battle = None
         self.mode = "battle_result"
         self.check_victory()
@@ -608,8 +656,29 @@ class App:
             self.draw_army_view()
         elif self.mode == "research" and self.gs:
             self.draw_research()
+        elif self.mode == "recruit_queue" and self.gs:
+            self.draw_recruit_queue()
         elif self.mode == "battle_result":
             self.draw_battle_result()
+
+    def draw_recruit_queue(self):
+        gs = self.gs
+        self.screen.fill((18, 20, 28))
+        self.screen.blit(self.big.render("Training Queue", True, (240, 240, 240)), (40, 35))
+        self.screen.blit(self.font.render("View all units currently in recruitment training.", True, (220, 220, 220)), (40, 75))
+
+        entries = [q for q in gs.recruit_queue if q["faction"] == gs.player_faction]
+        if not entries:
+            self.screen.blit(self.font.render("No units in the queue.", True, (230, 230, 210)), (45, 125))
+        else:
+            for i, item in enumerate(entries):
+                row = pygame.Rect(45, 120 + i * 70, 980, 60)
+                pygame.draw.rect(self.screen, (50, 56, 70), row)
+                pygame.draw.rect(self.screen, (180, 180, 200), row, 1)
+                text = f"{item['unit']} | Planet: {item['planet']} | Turns remaining: {item['turns']}"
+                self.screen.blit(self.font.render(text, True, (235, 235, 235)), (58, 143 + i * 70))
+
+        Button((30, 680, 210, 38), "Back to Campaign").draw(self.screen, self.font)
 
     def draw_battle_result(self):
         self.screen.fill((18, 18, 24))
@@ -739,7 +808,7 @@ class App:
         for i, line in enumerate(lines):
             self.screen.blit(self.font.render(line, True, (235, 235, 235)), (1160, 460 + i * 24))
 
-        labels = ["Save", "End Turn", "Auto Resolve", "Manual Battle", "Recruit Unit", "Build", "Research", "Tax +", "Tax -", "View Army"]
+        labels = ["Save", "End Turn", "Auto Resolve", "Manual Battle", "Recruit Unit", "Build", "Research", "Tax +", "Tax -", "View Army", "Training Queue"]
         for i, label in enumerate(labels):
             y = 20 + i * 50 if i < 4 else 220 + (i - 4) * 45
             Button((1170, y, 170, 40 if i < 4 else 34), label).draw(self.screen, self.font)
