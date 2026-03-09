@@ -14,24 +14,25 @@ SIDES = (EMPIRE, REBELS)
 
 MAP_W = 20
 MAP_H = 14
+SEASON_LENGTH = 4
 
 
 UNIT_DEFS: Dict[Side, Dict[str, dict]] = {
     EMPIRE: {
-        "Conscripts": {"hp": 40, "dmg": 8, "range": 1, "speed": 1, "cost": 90, "time": 2, "icon": "⚫"},
-        "Bike Squad": {"hp": 55, "dmg": 10, "range": 1, "speed": 2, "cost": 140, "time": 3, "icon": "🏍️"},
-        "Siege Walker": {"hp": 120, "dmg": 20, "range": 3, "speed": 1, "cost": 280, "time": 5, "icon": "🕷️"},
+        "Conscripts": {"hp": 40, "dmg": 8, "range": 1, "speed": 1, "cost": 90, "time": 2, "icon": "⚫", "class": "core"},
+        "Bike Squad": {"hp": 55, "dmg": 10, "range": 1, "speed": 2, "cost": 140, "time": 3, "icon": "🏍️", "class": "fast"},
+        "Siege Walker": {"hp": 120, "dmg": 20, "range": 3, "speed": 1, "cost": 280, "time": 5, "icon": "🕷️", "class": "heavy"},
     },
     REBELS: {
-        "Militia": {"hp": 35, "dmg": 9, "range": 1, "speed": 1, "cost": 80, "time": 2, "icon": "🔴"},
-        "Skimmer": {"hp": 50, "dmg": 11, "range": 1, "speed": 2, "cost": 135, "time": 3, "icon": "🛵"},
-        "Rocket Truck": {"hp": 95, "dmg": 22, "range": 3, "speed": 1, "cost": 260, "time": 5, "icon": "🚚"},
+        "Militia": {"hp": 35, "dmg": 9, "range": 1, "speed": 1, "cost": 80, "time": 2, "icon": "🔴", "class": "core"},
+        "Skimmer": {"hp": 50, "dmg": 11, "range": 1, "speed": 2, "cost": 135, "time": 3, "icon": "🛵", "class": "fast"},
+        "Rocket Truck": {"hp": 95, "dmg": 22, "range": 3, "speed": 1, "cost": 260, "time": 5, "icon": "🚚", "class": "heavy"},
     },
 }
 
 STRUCTURE_DEFS = {
     "Command": {"hp": 420, "cost": 0, "income": 8, "icon": "🏰", "queue": ["core"]},
-    "Barracks": {"hp": 220, "cost": 180, "income": 0, "icon": "🏢", "queue": ["infantry", "fast"]},
+    "Barracks": {"hp": 220, "cost": 180, "income": 0, "icon": "🏢", "queue": ["core", "fast"]},
     "War Factory": {"hp": 260, "cost": 260, "income": 0, "icon": "🏭", "queue": ["heavy"]},
     "Outpost": {"hp": 170, "cost": 120, "income": 2, "icon": "🛰️", "queue": []},
 }
@@ -46,7 +47,7 @@ class Unit:
     kind: str
     hp: int
     pos: Pos
-    order: str = "idle"  # idle, move, attack
+    order: str = "idle"
     target: Optional[Pos] = None
 
 
@@ -110,13 +111,8 @@ def occupied(game: dict, p: Pos) -> bool:
 
 
 def closest_enemy(game: dict, side: Side, pos: Pos) -> Optional[Pos]:
-    targets = []
-    for u in game["units"]:
-        if u["hp"] > 0 and u["side"] != side:
-            targets.append(tuple(u["pos"]))
-    for s in game["structures"]:
-        if s["hp"] > 0 and s["side"] != side:
-            targets.append(tuple(s["pos"]))
+    targets = [tuple(u["pos"]) for u in game["units"] if u["hp"] > 0 and u["side"] != side]
+    targets.extend(tuple(s["pos"]) for s in game["structures"] if s["hp"] > 0 and s["side"] != side)
     if not targets:
         return None
     return min(targets, key=lambda t: chebyshev(pos, t))
@@ -129,19 +125,21 @@ def move_step_towards(src: Pos, dst: Pos) -> Pos:
     return sx + dx, sy + dy
 
 
+def refresh_recruitment(side: Side) -> dict:
+    return {"core": 2, "fast": 1, "heavy": 1}
+
+
 def make_initial_game(player_side: Side) -> dict:
     empire_base = (2, MAP_H // 2)
     rebel_base = (MAP_W - 3, MAP_H // 2)
 
     nodes = [(MAP_W // 2, 2), (MAP_W // 2, MAP_H - 3), (MAP_W // 2, MAP_H // 2)]
-
     structures = [
         asdict(Structure("emp-cmd", EMPIRE, "Command", STRUCTURE_DEFS["Command"]["hp"], empire_base, [])),
         asdict(Structure("reb-cmd", REBELS, "Command", STRUCTURE_DEFS["Command"]["hp"], rebel_base, [])),
         asdict(Structure("emp-barr", EMPIRE, "Barracks", STRUCTURE_DEFS["Barracks"]["hp"], (4, MAP_H // 2 - 2), [])),
         asdict(Structure("reb-barr", REBELS, "Barracks", STRUCTURE_DEFS["Barracks"]["hp"], (MAP_W - 5, MAP_H // 2 + 2), [])),
     ]
-
     units = [
         asdict(Unit("emp-1", EMPIRE, "Conscripts", unit_stats(EMPIRE, "Conscripts")["hp"], (3, MAP_H // 2))),
         asdict(Unit("emp-2", EMPIRE, "Bike Squad", unit_stats(EMPIRE, "Bike Squad")["hp"], (4, MAP_H // 2))),
@@ -153,7 +151,9 @@ def make_initial_game(player_side: Side) -> dict:
         "phase": "playing",
         "tick": 1,
         "player_side": player_side,
-        "resources": {EMPIRE: 350, REBELS: 350},
+        "credits": {EMPIRE: 350, REBELS: 350},
+        "season": 1,
+        "recruitment": {EMPIRE: refresh_recruitment(EMPIRE), REBELS: refresh_recruitment(REBELS)},
         "selected": None,
         "nodes": [list(n) for n in nodes],
         "node_owner": {f"{x},{y}": None for (x, y) in nodes},
@@ -164,11 +164,7 @@ def make_initial_game(player_side: Side) -> dict:
 
 
 def structure_income(game: dict, side: Side) -> int:
-    total = 0
-    for s in game["structures"]:
-        if s["hp"] > 0 and s["side"] == side:
-            total += STRUCTURE_DEFS[s["kind"]]["income"]
-    return total
+    return sum(STRUCTURE_DEFS[s["kind"]]["income"] for s in game["structures"] if s["hp"] > 0 and s["side"] == side)
 
 
 def update_node_control(game: dict) -> None:
@@ -188,8 +184,15 @@ def update_node_control(game: dict) -> None:
 
 def apply_income(game: dict) -> None:
     for side in SIDES:
-        node_income = sum(12 for owner in game["node_owner"].values() if owner == side)
-        game["resources"][side] += structure_income(game, side) + node_income
+        province_income = sum(12 for owner in game["node_owner"].values() if owner == side)
+        game["credits"][side] += structure_income(game, side) + province_income
+
+
+def maybe_new_season(game: dict) -> None:
+    if game["tick"] % SEASON_LENGTH == 0:
+        game["season"] += 1
+        for side in SIDES:
+            game["recruitment"][side] = refresh_recruitment(side)
 
 
 def produce_units(game: dict) -> None:
@@ -199,7 +202,6 @@ def produce_units(game: dict) -> None:
         s["queue"][0]["remaining"] -= 1
         if s["queue"][0]["remaining"] > 0:
             continue
-
         order = s["queue"].pop(0)
         kind = order["kind"]
         spawn = None
@@ -209,7 +211,6 @@ def produce_units(game: dict) -> None:
                 break
         if not spawn:
             continue
-
         idx = 1 + sum(1 for u in game["units"] if u["side"] == s["side"])
         hp = unit_stats(s["side"], kind)["hp"]
         game["units"].append(asdict(Unit(f"{s['side'][:3]}-{idx}", s["side"], kind, hp, spawn)))
@@ -220,19 +221,16 @@ def unit_attack_phase(game: dict) -> None:
         stats = unit_stats(u["side"], u["kind"])
         pos = tuple(u["pos"])
         enemies: List[Tuple[int, dict]] = []
-
         for eu in game["units"]:
             if eu["hp"] > 0 and eu["side"] != u["side"]:
                 d = chebyshev(pos, tuple(eu["pos"]))
                 if d <= stats["range"]:
                     enemies.append((d, eu))
-
         for es in game["structures"]:
             if es["hp"] > 0 and es["side"] != u["side"]:
                 d = chebyshev(pos, tuple(es["pos"]))
                 if d <= stats["range"]:
                     enemies.append((d, es))
-
         if enemies:
             enemies.sort(key=lambda x: x[0])
             enemies[0][1]["hp"] -= stats["dmg"]
@@ -242,7 +240,6 @@ def unit_move_phase(game: dict) -> None:
     for u in [u for u in game["units"] if u["hp"] > 0]:
         stats = unit_stats(u["side"], u["kind"])
         current = tuple(u["pos"])
-
         target = tuple(u["target"]) if u.get("target") else None
         if u["order"] in ("attack", "move") and target:
             for _ in range(stats["speed"]):
@@ -253,7 +250,6 @@ def unit_move_phase(game: dict) -> None:
                     break
                 u["pos"] = [nxt[0], nxt[1]]
                 current = nxt
-
         if u["order"] == "attack":
             if not target:
                 enemy = closest_enemy(game, u["side"], tuple(u["pos"]))
@@ -270,14 +266,27 @@ def cleanup(game: dict) -> None:
     game["structures"] = [s for s in game["structures"] if s["hp"] > 0]
 
 
+def can_train_from(structure_kind: str, unit_kind: str, side: Side) -> bool:
+    return unit_stats(side, unit_kind)["class"] in STRUCTURE_DEFS[structure_kind]["queue"]
+
+
 def queue_unit(game: dict, structure_id: str, kind: str) -> bool:
     s = next((x for x in game["structures"] if x["id"] == structure_id and x["hp"] > 0), None)
     if not s:
         return False
-    cost = unit_stats(s["side"], kind)["cost"]
-    if game["resources"][s["side"]] < cost:
+    if not can_train_from(s["kind"], kind, s["side"]):
         return False
-    game["resources"][s["side"]] -= cost
+
+    unit_class = unit_stats(s["side"], kind)["class"]
+    if game["recruitment"][s["side"]][unit_class] <= 0:
+        return False
+
+    cost = unit_stats(s["side"], kind)["cost"]
+    if game["credits"][s["side"]] < cost:
+        return False
+
+    game["credits"][s["side"]] -= cost
+    game["recruitment"][s["side"]][unit_class] -= 1
     s["queue"].append({"kind": kind, "remaining": unit_stats(s["side"], kind)["time"]})
     return True
 
@@ -290,10 +299,10 @@ def ai_build(game: dict, side: Side) -> None:
     has_factory = any(s["kind"] == "War Factory" for s in my_structs)
     cmd = next((s for s in my_structs if s["kind"] == "Command"), None)
 
-    if not has_factory and cmd and game["resources"][side] >= STRUCTURE_DEFS["War Factory"]["cost"]:
+    if not has_factory and cmd and game["credits"][side] >= STRUCTURE_DEFS["War Factory"]["cost"]:
         for n in neighbors8(tuple(cmd["pos"])):
             if not occupied(game, n):
-                game["resources"][side] -= STRUCTURE_DEFS["War Factory"]["cost"]
+                game["credits"][side] -= STRUCTURE_DEFS["War Factory"]["cost"]
                 idx = 1 + sum(1 for s in game["structures"] if s["side"] == side)
                 game["structures"].append(
                     asdict(Structure(f"{side[:3]}-wf-{idx}", side, "War Factory", STRUCTURE_DEFS["War Factory"]["hp"], n, []))
@@ -302,7 +311,8 @@ def ai_build(game: dict, side: Side) -> None:
 
     for s in my_structs:
         if s["kind"] == "Barracks" and len(s["queue"]) < 2:
-            queue_unit(game, s["id"], random.choice(["Conscripts", "Bike Squad"]) if side == EMPIRE else random.choice(["Militia", "Skimmer"]))
+            kind = random.choice(["Conscripts", "Bike Squad"]) if side == EMPIRE else random.choice(["Militia", "Skimmer"])
+            queue_unit(game, s["id"], kind)
         if s["kind"] == "War Factory" and len(s["queue"]) < 1:
             queue_unit(game, s["id"], "Siege Walker" if side == EMPIRE else "Rocket Truck")
 
@@ -321,8 +331,7 @@ def ai_orders(game: dict, side: Side) -> None:
 def check_winner(game: dict) -> Optional[Side]:
     for side in SIDES:
         enemy = REBELS if side == EMPIRE else EMPIRE
-        enemy_cmd_alive = any(s for s in game["structures"] if s["side"] == enemy and s["kind"] == "Command")
-        if not enemy_cmd_alive:
+        if not any(s for s in game["structures"] if s["side"] == enemy and s["kind"] == "Command"):
             return side
     return None
 
@@ -330,9 +339,11 @@ def check_winner(game: dict) -> Optional[Side]:
 def simulate_tick(game: dict) -> None:
     update_node_control(game)
     apply_income(game)
+    maybe_new_season(game)
     produce_units(game)
-    ai_build(game, REBELS if game["player_side"] == EMPIRE else EMPIRE)
-    ai_orders(game, REBELS if game["player_side"] == EMPIRE else EMPIRE)
+    ai_side = REBELS if game["player_side"] == EMPIRE else EMPIRE
+    ai_build(game, ai_side)
+    ai_orders(game, ai_side)
     unit_move_phase(game)
     unit_attack_phase(game)
     cleanup(game)
@@ -358,8 +369,8 @@ def tile_label(game: dict, p: Pos) -> str:
 
 
 def draw_map(game: dict) -> None:
-    st.subheader("Battlefield")
-    st.caption("Select your unit/structure, then issue orders. Advance simulation with Step 1 Tick.")
+    st.subheader("Battle Sector")
+    st.caption("Total War-style loop: secure provinces, collect seasonal income, spend limited recruitment slots.")
 
     for y in range(MAP_H):
         cols = st.columns(MAP_W)
@@ -401,25 +412,22 @@ def render_selection_panel(game: dict) -> None:
             return
 
         if s["kind"] in ("Barracks", "Command", "War Factory"):
-            choices = list(UNIT_DEFS[s["side"]].keys())
-            if s["kind"] == "Barracks":
-                allowed = [choices[0], choices[1]]
-            elif s["kind"] == "War Factory":
-                allowed = [choices[2]]
-            else:
-                allowed = [choices[0]]
-
-            for kind in allowed:
+            for kind in UNIT_DEFS[s["side"]].keys():
+                if not can_train_from(s["kind"], kind, s["side"]):
+                    continue
                 cost = unit_stats(s["side"], kind)["cost"]
-                if st.button(f"Train {kind} (${cost})", key=f"build-{s['id']}-{kind}", use_container_width=True):
+                unit_class = unit_stats(s["side"], kind)["class"]
+                remaining = game["recruitment"][s["side"]][unit_class]
+                label = f"Train {kind} (${cost}) [{unit_class}:{remaining}]"
+                if st.button(label, key=f"build-{s['id']}-{kind}", use_container_width=True):
                     if not queue_unit(game, s["id"], kind):
-                        st.warning("Not enough credits.")
+                        st.warning("Unable to train: insufficient credits or seasonal recruitment slots.")
 
-        if s["kind"] == "Command" and game["resources"][s["side"]] >= STRUCTURE_DEFS["Outpost"]["cost"]:
+        if s["kind"] == "Command" and game["credits"][s["side"]] >= STRUCTURE_DEFS["Outpost"]["cost"]:
             if st.button("Deploy Outpost (adjacent)", use_container_width=True):
                 for n in neighbors8(tuple(s["pos"])):
                     if not occupied(game, n):
-                        game["resources"][s["side"]] -= STRUCTURE_DEFS["Outpost"]["cost"]
+                        game["credits"][s["side"]] -= STRUCTURE_DEFS["Outpost"]["cost"]
                         idx = 1 + sum(1 for x in game["structures"] if x["side"] == s["side"])
                         game["structures"].append(
                             asdict(Structure(f"{s['side'][:3]}-op-{idx}", s["side"], "Outpost", STRUCTURE_DEFS["Outpost"]["hp"], n, []))
@@ -429,19 +437,19 @@ def render_selection_panel(game: dict) -> None:
 
     if f"{sel[0]},{sel[1]}" in game["node_owner"]:
         owner = game["node_owner"][f"{sel[0]},{sel[1]}"]
-        st.write(f"Resource Node owner: {owner or 'Neutral'}")
+        st.write(f"Province owner: {owner or 'Neutral'}")
 
 
 def render_header(game: dict) -> None:
-    st.title("Shogun's Honor: Rebel Uprising RTS")
+    st.title("Shogun's Honor: Galactic Total War")
     st.write(
-        f"Tick **{game['tick']}** | You: **{side_name(game['player_side'])}** | "
-        f"Empire Credits: **{game['resources'][EMPIRE]}** | Rebels Credits: **{game['resources'][REBELS]}**"
+        f"Season **{game['season']}** | Tick **{game['tick']}** | You: **{side_name(game['player_side'])}** | "
+        f"Empire Credits: **{game['credits'][EMPIRE]}** | Rebels Credits: **{game['credits'][REBELS]}**"
     )
 
 
 def render_side_picker() -> None:
-    st.title("Shogun's Honor RTS")
+    st.title("Shogun's Honor: Galactic Total War")
     st.subheader("Pick your faction")
     c1, c2 = st.columns(2)
     with c1:
@@ -459,7 +467,7 @@ def render_side_picker() -> None:
 
 
 def main() -> None:
-    st.set_page_config(layout="wide", page_title="Shogun's Honor RTS")
+    st.set_page_config(layout="wide", page_title="Shogun's Honor: Galactic Total War")
     if "game" not in st.session_state:
         st.session_state.game = {"phase": "choose_side"}
 
@@ -482,10 +490,10 @@ def main() -> None:
     with right:
         render_selection_panel(game)
         st.markdown("---")
-        if st.button("Step 1 Tick", use_container_width=True):
+        if st.button("Advance 1 Tick", use_container_width=True):
             simulate_tick(game)
             st.rerun()
-        if st.button("Step 5 Ticks", use_container_width=True):
+        if st.button("Advance 5 Ticks", use_container_width=True):
             for _ in range(5):
                 if game["phase"] != "playing":
                     break
