@@ -58,9 +58,17 @@ def _move_armies(gs: GameState, faction_id: str) -> None:
         army.planet = target
         army.movement -= 1
 
+        defenders_present = any(
+            other.planet == target and other.faction_id != faction_id and len(other.units) > 0
+            for other in gs.armies.values()
+        )
+
         if gs.planets[target].owner == "neutral":
             gs.planets[target].owner = faction_id
             gs.message = f"{faction.name} peacefully claims {target}."
+        elif not defenders_present:
+            gs.planets[target].owner = faction_id
+            gs.message = f"{faction.name} captures undefended {target}."
         elif gs.planets[target].owner != faction_id:
             gs.message = f"{faction.name} attacks {target}!"
 
