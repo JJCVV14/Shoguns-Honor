@@ -6,7 +6,7 @@ from battle.autoresolve import resolve as auto_resolve
 from battle.battle_scene import BattleScene
 from game.ai import run_ai_turn, start_research_if_idle
 from game.save_load import load_campaign, save_campaign
-from game.state import GameState, UnitCard, new_campaign
+from game.state import Army, GameState, General, UnitCard, new_campaign
 from settings import SCREEN_HEIGHT, SCREEN_WIDTH, FPS, SAVE_FILE
 
 
@@ -34,6 +34,7 @@ class App:
         self.pending_battle = None
         self.last_battle = {"title": "", "detail": ""}
         self.recruit_items = []
+        self.build_items = []
 
     def run(self):
         while True:
@@ -74,6 +75,10 @@ class App:
                         self.mode = "campaign"
         elif self.mode == "recruit" and self.gs:
             self.handle_recruit_event(e)
+        elif self.mode == "build" and self.gs:
+            self.handle_build_event(e)
+        elif self.mode == "army_view" and self.gs:
+            self.handle_army_view_event(e)
         elif self.mode == "battle_result":
             if e.type == pygame.KEYDOWN or (e.type == pygame.MOUSEBUTTONDOWN and e.button == 1):
                 self.mode = "campaign"
@@ -85,8 +90,11 @@ class App:
     def _sanitize_armies(self):
         gs = self.gs
         for army in gs.armies.values():
+            if army.faction_id not in gs.unit_db:
+                continue
             allowed_names = {u["name"] for u in gs.unit_db[army.faction_id]}
             army.units = [u for u in army.units if u.name in allowed_names]
+        self.ensure_planet_garrisons()
 
     def handle_campaign_event(self, e):
         gs = self.gs
@@ -103,7 +111,9 @@ class App:
             elif pygame.Rect(1170, 220, 170, 34).collidepoint(e.pos):
                 self.open_recruit_screen()
             elif pygame.Rect(1170, 265, 170, 34).collidepoint(e.pos):
-                self.build_selected()
+                self.open_build_screen()
+            elif pygame.Rect(1170, 445, 170, 34).collidepoint(e.pos):
+                self.open_army_view()
             elif pygame.Rect(1170, 310, 170, 34).collidepoint(e.pos):
                 self.start_research_player()
             elif pygame.Rect(1170, 355, 170, 34).collidepoint(e.pos):
@@ -122,7 +132,7 @@ class App:
 
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 3 and gs.selected_army:
             army = gs.armies.get(gs.selected_army)
-            if not army or army.movement <= 0:
+            if not army or army.movement <= 0 or not army.can_move:
                 return
             for p in gs.planets.values():
                 if (p.x - e.pos[0]) ** 2 + (p.y - e.pos[1]) ** 2 < 20 ** 2 and p.name in gs.planets[army.planet].connections:
@@ -179,9 +189,6 @@ class App:
             gs.message = "Selected army must be on the recruitment planet."
             return
 
-        if len(army.units) >= 12:
-            gs.message = "Army is already at unit capacity."
-            return
 
         turns = max(1, 4 - planet.military)
         if faction.treasury < unit["cost"]:
@@ -215,8 +222,6 @@ class App:
             army = gs.armies.get(item["army"])
             if not army or army.faction_id != item["faction"]:
                 continue
-            if len(army.units) >= 12:
-                continue
 
             template = next((u for u in gs.unit_db[item["faction"]] if u["name"] == item["unit"]), None)
             if template:
@@ -224,25 +229,119 @@ class App:
                 if item["faction"] == gs.player_faction:
                     gs.message = f"{item['unit']} is ready at {item['planet']}."
 
-    def build_selected(self):
+    def open_build_screen(self):
         gs = self.gs
         if not gs.selected_planet:
+            gs.message = "Select a planet first."
             return
 
         planet = gs.planets[gs.selected_planet]
-        faction = gs.factions[gs.player_faction]
-        if planet.owner != gs.player_faction or len(planet.buildings) >= planet.slots:
+        if planet.owner != gs.player_faction:
+            gs.message = "Must own planet to build."
             return
 
-        choices = [b for b in gs.buildings_db if b not in planet.buildings]
-        for building in choices:
-            cost = gs.buildings_db[building]["cost"]
-            if faction.treasury >= cost:
-                faction.treasury -= cost
-                planet.buildings.append(building)
-                planet.military += gs.buildings_db[building].get("military", 0)
-                gs.message = f"Built {building}"
+        self.build_items = [b for b in gs.buildings_db if b not in planet.buildings]
+        self.mode = "build"
+
+    def handle_build_event(self, e):
+        gs = self.gs
+        if e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
+            self.mode = "campaign"
+            return
+
+        if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
+            if pygame.Rect(30, 680, 210, 38).collidepoint(e.pos):
+                self.mode = "campaign"
                 return
+            for i, building in enumerate(self.build_items):
+                if pygame.Rect(45, 170 + i * 72, 980, 62).collidepoint(e.pos):
+                    self.build_selected(building)
+                    self.mode = "campaign"
+                    return
+
+    def build_selected(self, building):
+        gs = self.gs
+        planet = gs.planets[gs.selected_planet]
+        faction = gs.factions[gs.player_faction]
+
+        if building in planet.buildings:
+            gs.message = f"{building} is already built on {planet.name}."
+            return
+        if len(planet.buildings) >= planet.slots:
+            gs.message = f"{planet.name} has no free building slots."
+            return
+
+        cost = gs.buildings_db[building]["cost"]
+        if faction.treasury < cost:
+            gs.message = "Insufficient funds."
+            return
+
+        faction.treasury -= cost
+        planet.buildings.append(building)
+        planet.military += gs.buildings_db[building].get("military", 0)
+        gs.message = f"Built {building} on {planet.name}."
+
+    def open_army_view(self):
+        gs = self.gs
+        if not gs.selected_army or gs.selected_army not in gs.armies:
+            gs.message = "Select an army to inspect."
+            return
+        self.mode = "army_view"
+
+    def handle_army_view_event(self, e):
+        if e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
+            self.mode = "campaign"
+            return
+        if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1 and pygame.Rect(30, 680, 210, 38).collidepoint(e.pos):
+            self.mode = "campaign"
+
+    def ensure_planet_garrisons(self):
+        gs = self.gs
+        for planet in gs.planets.values():
+            if planet.owner in ("neutral", "revolutionaries"):
+                continue
+            exists = any(a.planet == planet.name and a.faction_id == planet.owner and a.is_planet_garrison for a in gs.armies.values())
+            if exists:
+                continue
+            unit_template = gs.unit_db[planet.owner][0]
+            garrison = Army(
+                id=gs.next_army_id,
+                faction_id=planet.owner,
+                planet=planet.name,
+                general=General(name="Planetary Commander"),
+                units=[UnitCard.from_template(unit_template)],
+                movement=0,
+                is_planet_garrison=True,
+                can_move=False,
+            )
+            gs.armies[gs.next_army_id] = garrison
+            gs.next_army_id += 1
+
+    def trigger_revolutionaries(self):
+        gs = self.gs
+        for planet in gs.planets.values():
+            if planet.owner in ("neutral", "revolutionaries"):
+                continue
+            if planet.stability - planet.unrest > 0:
+                continue
+            planet.owner = "revolutionaries"
+            planet.unrest = 0
+            for aid in [aid for aid,a in gs.armies.items() if a.planet == planet.name and a.faction_id != "revolutionaries"]:
+                gs.armies.pop(aid, None)
+            template = gs.unit_db["revolutionaries"][0]
+            rev_units = [UnitCard.from_template(template) for _ in range(4)]
+            gs.armies[gs.next_army_id] = Army(
+                id=gs.next_army_id,
+                faction_id="revolutionaries",
+                planet=planet.name,
+                general=General(name="Revolutionary Cell"),
+                units=rev_units,
+                movement=0,
+                is_planet_garrison=True,
+                can_move=False,
+            )
+            gs.next_army_id += 1
+            gs.message = f"Revolutionaries have seized {planet.name}!"
 
     def start_research_player(self):
         gs = self.gs
@@ -276,6 +375,8 @@ class App:
     def compute_income(self, fid):
         gs = self.gs
         fac = gs.factions[fid]
+        if fid == "revolutionaries":
+            return
         econ_bonus = 0.1 if "econ_1" in fac.unlocked_techs else 0.0
 
         income = 0
@@ -287,9 +388,10 @@ class App:
                     p.unrest += 4
                 else:
                     p.unrest = max(0, p.unrest - 2)
-                if p.unrest > 25 and p.stability < 55:
-                    p.owner = "neutral"
-                    p.unrest = 0
+                if fac.tax_rate > 1.2:
+                    p.stability -= 2
+                else:
+                    p.stability = min(100, p.stability + 1)
 
         for a in gs.armies.values():
             if a.faction_id == fid:
@@ -307,15 +409,20 @@ class App:
             gs.current_faction = fid
             for army in gs.armies.values():
                 if army.faction_id == fid:
-                    army.movement = 2 if "logistics_1" in gs.factions[fid].unlocked_techs else 1
+                    if army.can_move:
+                        army.movement = 2 if "logistics_1" in gs.factions[fid].unlocked_techs else 1
+                    else:
+                        army.movement = 0
             self.resolve_research(fid)
             self.resolve_recruitment(fid)
             self.compute_income(fid)
-            if fid != gs.player_faction:
+            if fid not in (gs.player_faction, "revolutionaries"):
                 start_research_if_idle(gs, fid)
                 run_ai_turn(gs, fid)
             self.check_for_battles(fid)
 
+        self.trigger_revolutionaries()
+        self.ensure_planet_garrisons()
         gs.turn += 1
         self.check_victory()
 
@@ -391,7 +498,7 @@ class App:
         gs = self.gs
         player = gs.player_faction
         owned = [p for p in gs.planets.values() if p.owner == player]
-        enemies = [f for f in gs.factions if f != player and any(p.owner == f for p in gs.planets.values())]
+        enemies = [f for f in gs.factions if f not in (player, "revolutionaries") and any(p.owner == f for p in gs.planets.values())]
 
         if len(owned) >= 10 or not enemies:
             gs.message = "Victory achieved! Press ESC to quit."
@@ -432,6 +539,10 @@ class App:
             self.draw_campaign()
         elif self.mode == "recruit" and self.gs:
             self.draw_recruit()
+        elif self.mode == "build" and self.gs:
+            self.draw_build()
+        elif self.mode == "army_view" and self.gs:
+            self.draw_army_view()
         elif self.mode == "battle_result":
             self.draw_battle_result()
 
@@ -460,6 +571,44 @@ class App:
             )
             self.screen.blit(self.font.render(text, True, (235, 235, 235)), (58, 145 + i * 80))
 
+        Button((30, 680, 210, 38), "Back to Campaign").draw(self.screen, self.font)
+
+    def draw_build(self):
+        gs = self.gs
+        planet = gs.planets[gs.selected_planet]
+        self.screen.fill((20, 22, 30))
+        self.screen.blit(self.big.render(f"Build - {planet.name}", True, (240, 240, 240)), (40, 35))
+        self.screen.blit(self.font.render("Built structures:", True, (220, 220, 220)), (40, 85))
+        built = ", ".join(planet.buildings) if planet.buildings else "None"
+        self.screen.blit(self.font.render(built, True, (230, 230, 210)), (180, 85))
+        self.screen.blit(self.font.render(f"Slots used: {len(planet.buildings)}/{planet.slots}", True, (220, 220, 220)), (40, 115))
+
+        for i, building in enumerate(self.build_items):
+            data = gs.buildings_db[building]
+            row = pygame.Rect(45, 170 + i * 72, 980, 62)
+            pygame.draw.rect(self.screen, (50, 56, 70), row)
+            pygame.draw.rect(self.screen, (180, 180, 200), row, 1)
+            text = f"{building} | Cost: {data['cost']} | {data.get('description', 'No description.')}"
+            self.screen.blit(self.font.render(text, True, (235, 235, 235)), (58, 195 + i * 72))
+
+        Button((30, 680, 210, 38), "Back to Campaign").draw(self.screen, self.font)
+
+    def draw_army_view(self):
+        gs = self.gs
+        army = gs.armies.get(gs.selected_army)
+        self.screen.fill((18, 20, 28))
+        if not army:
+            self.screen.blit(self.big.render("Army no longer exists", True, (240, 120, 120)), (40, 50))
+            Button((30, 680, 210, 38), "Back to Campaign").draw(self.screen, self.font)
+            return
+        title = f"Army View - {gs.factions[army.faction_id].name} @ {army.planet}"
+        self.screen.blit(self.big.render(title, True, (240, 240, 240)), (40, 35))
+        for i, unit in enumerate(army.units):
+            row = pygame.Rect(45, 100 + i * 60, 1180, 52)
+            pygame.draw.rect(self.screen, (48, 54, 68), row)
+            pygame.draw.rect(self.screen, (160, 170, 190), row, 1)
+            txt = f"{unit.name} | HP:{unit.hp:.0f}/{unit.stats['health']} | DMG:{unit.stats['damage']} ARM:{unit.stats['armor']} RNG:{unit.stats['range']} SPD:{unit.stats['speed']}"
+            self.screen.blit(self.font.render(txt, True, (235, 235, 235)), (58, 118 + i * 60))
         Button((30, 680, 210, 38), "Back to Campaign").draw(self.screen, self.font)
 
     def draw_campaign(self):
@@ -495,7 +644,7 @@ class App:
         for i, line in enumerate(lines):
             self.screen.blit(self.font.render(line, True, (235, 235, 235)), (1160, 460 + i * 24))
 
-        labels = ["Save", "End Turn", "Auto Resolve", "Manual Battle", "Recruit Unit", "Build", "Research", "Tax +", "Tax -"]
+        labels = ["Save", "End Turn", "Auto Resolve", "Manual Battle", "Recruit Unit", "Build", "Research", "Tax +", "Tax -", "View Army"]
         for i, label in enumerate(labels):
             y = 20 + i * 50 if i < 4 else 220 + (i - 4) * 45
             Button((1170, y, 170, 40 if i < 4 else 34), label).draw(self.screen, self.font)
