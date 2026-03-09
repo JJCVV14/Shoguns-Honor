@@ -806,16 +806,14 @@ class App:
         panel = pygame.Rect(1150, 0, 216, SCREEN_HEIGHT)
         pygame.draw.rect(self.screen, (35, 36, 48), panel)
         top = gs.factions[gs.player_faction]
-        lines = [
+        status_line = "   |   ".join([
             f"Turn {gs.turn}",
             f"Treasury: {top.treasury}",
             f"Tax: {top.tax_rate:.1f}",
             f"Research: {top.research_target or 'None'}",
             f"Pending battle: {'Yes' if self.pending_battle else 'No'}",
             f"Queued recruits: {len([q for q in gs.recruit_queue if q['faction'] == gs.player_faction])}",
-        ]
-        for i, line in enumerate(lines):
-            self.screen.blit(self.font.render(line, True, (235, 235, 235)), (1160, 460 + i * 24))
+        ])
 
         labels = ["Save", "End Turn", "Auto Resolve", "Manual Battle", "Recruit Unit", "Build", "Research", "Tax +", "Tax -", "View Army", "Training Queue"]
         for i, label in enumerate(labels):
@@ -834,6 +832,11 @@ class App:
             ]
             for i, d in enumerate(details):
                 self.screen.blit(self.font.render(d, True, (240, 240, 210)), (20, 620 + i * 22))
+
+        status_bar = pygame.Rect(0, SCREEN_HEIGHT - 34, SCREEN_WIDTH, 34)
+        pygame.draw.rect(self.screen, (17, 20, 28), status_bar)
+        pygame.draw.line(self.screen, (90, 100, 120), (0, SCREEN_HEIGHT - 34), (SCREEN_WIDTH, SCREEN_HEIGHT - 34), 1)
+        self.screen.blit(self.font.render(status_line, True, (235, 235, 235)), (12, SCREEN_HEIGHT - 26))
 
         self.screen.blit(self.font.render(gs.message, True, (255, 210, 90)), (20, 22))
 
