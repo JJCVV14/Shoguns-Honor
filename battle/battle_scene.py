@@ -31,8 +31,7 @@ class BattleScene:
         self.font = pygame.font.SysFont("arial", 16)
         self.small = pygame.font.SysFont("arial", 12)
         self.big = pygame.font.SysFont("arial", 24, bold=True)
-        self.terrain = [pygame.Rect(280, 180, 180, 130), pygame.Rect(710, 370, 190, 140)]
-        self.highground = pygame.Rect(500, 120, 220, 120)
+        self.highgrounds = self._generate_highgrounds()
         self.atk_general_cd = {"rally": 0, "orbital": 0}
         self.def_general_cd = {"rally": 0, "orbital": 0}
         self.squads = []
@@ -46,6 +45,39 @@ class BattleScene:
         self.time = 0
         self.result = None
         self.projectiles = []
+
+    def _generate_highgrounds(self):
+        zones = []
+        # Original zone was 220x120; make each new zone ~3x smaller by dimension.
+        zone_w, zone_h = 73, 40
+        margin_x = 140
+        margin_top = 70
+        margin_bottom = 130
+        max_x = self.screen.get_width() - margin_x - zone_w
+        max_y = self.screen.get_height() - margin_bottom - zone_h
+
+        attempts = 0
+        while len(zones) < 4 and attempts < 200:
+            attempts += 1
+            candidate = pygame.Rect(
+                random.randint(margin_x, max_x),
+                random.randint(margin_top, max_y),
+                zone_w,
+                zone_h,
+            )
+            # Keep a little spacing so labels don't overlap each other.
+            if any(candidate.inflate(14, 14).colliderect(zone) for zone in zones):
+                continue
+            zones.append(candidate)
+
+        # Fallback in the unlikely case random placement couldn't fill all slots.
+        while len(zones) < 4:
+            idx = len(zones)
+            x = margin_x + (idx % 2) * (zone_w + 40)
+            y = margin_top + (idx // 2) * (zone_h + 40)
+            zones.append(pygame.Rect(x, y, zone_w, zone_h))
+
+        return zones
 
     def run(self):
         while not self.result:
@@ -114,7 +146,7 @@ class BattleScene:
                 else:
                     s.fatigue = max(0, s.fatigue - 3 * dt)
             if dist <= s.card.stats["range"]:
-                accuracy = s.card.stats["accuracy"] + (0.08 if self.highground.collidepoint(s.pos) else 0)
+                accuracy = s.card.stats["accuracy"] + (0.08 if any(hg.collidepoint(s.pos) for hg in self.highgrounds) else 0)
                 fire_chance = dt * 4.5
                 if random.random() < fire_chance:
                     direction = (nearest.pos - s.pos)
@@ -157,11 +189,14 @@ class BattleScene:
             pr["pos"] += pr["vel"] * dt
             pr["ttl"] -= dt
         self.projectiles = [pr for pr in self.projectiles if pr["ttl"] > 0]
+
     def draw(self):
         self.screen.fill((28, 35, 40))
-        pygame.draw.rect(self.screen, (65, 95, 70), self.highground)
-        for c in self.terrain:
-            pygame.draw.rect(self.screen, (70, 80, 85), c)
+        for hg in self.highgrounds:
+            pygame.draw.rect(self.screen, (65, 95, 70), hg)
+            label = self.small.render("High Ground", True, (220, 240, 220))
+            label_pos = (hg.centerx - label.get_width() // 2, hg.centery - label.get_height() // 2)
+            self.screen.blit(label, label_pos)
         for s in self.squads:
             rect = pygame.Rect(s.pos.x - 14, s.pos.y - 14, 28, 28)
             pygame.draw.rect(self.screen, s.color, rect)
