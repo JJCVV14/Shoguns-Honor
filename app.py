@@ -69,8 +69,18 @@ def side_label(side: Side) -> str:
 def load_symbol(side: Side) -> Optional[Path]:
     # Tries common names if the user drops files into /assets.
     candidates = {
-        REBELS: ["assets/rebel.png", "assets/rebels.png", "assets/rebel_symbol.png"],
-        EMPIRE: ["assets/empire.png", "assets/empire_symbol.png", "assets/imperial.png"],
+        REBELS: [
+            "assets/rebel_symbol.svg",
+            "assets/rebel.png",
+            "assets/rebels.png",
+            "assets/rebel_symbol.png",
+        ],
+        EMPIRE: [
+            "assets/empire_symbol.svg",
+            "assets/empire.png",
+            "assets/empire_symbol.png",
+            "assets/imperial.png",
+        ],
     }
     for item in candidates[side]:
         p = Path(item)
@@ -591,8 +601,8 @@ def render_side_picker() -> None:
 
     if not rebel_symbol or not empire_symbol:
         st.info(
-            "Optional: add faction images at assets/rebel.png and assets/empire.png "
-            "to display custom symbols on this screen."
+            "Faction symbol files can be replaced at assets/rebel_symbol.svg and "
+            "assets/empire_symbol.svg (or use rebel.png/empire.png)."
         )
 
 
