@@ -1,0 +1,8 @@
+{
+  "Trade Port": {"cost": 280, "income": 65, "military": 0, "order": 2, "trade": 20},
+  "Factory": {"cost": 320, "income": 55, "military": 0, "order": -1, "industry": 20},
+  "Barracks": {"cost": 280, "income": 0, "military": 1, "order": 1},
+  "Vehicle Depot": {"cost": 360, "income": 0, "military": 2, "order": 0},
+  "Academy": {"cost": 360, "income": 0, "military": 0, "research": 20, "order": 1},
+  "Security Bureau": {"cost": 260, "income": 0, "military": 0, "order": 6}
+}
