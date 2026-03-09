@@ -107,6 +107,13 @@ class GameState:
     selected_army: Optional[int] = None
     message: str = ""
     next_army_id: int = 100
+    recruit_queue: List[dict] = field(default_factory=list)
+
+
+def opposing_factions(player_faction: str) -> tuple[str, str]:
+    if player_faction in ("empire", "rebels"):
+        return "empire", "rebels"
+    return "republic", "separatists"
 
 
 def load_game_data() -> tuple:
@@ -122,12 +129,20 @@ def load_game_data() -> tuple:
 
 def new_campaign(player_faction: str) -> GameState:
     f_data, p_data, unit_db, building_db, tech_db, leaders_db = load_game_data()
-    factions = {f["id"]: Faction(**f) for f in f_data}
+    allowed = opposing_factions(player_faction)
+
+    factions = {f["id"]: Faction(**f) for f in f_data if f["id"] in allowed}
     planets = {p["name"]: Planet(**p) for p in p_data}
+
+    for planet in planets.values():
+        if planet.owner not in allowed:
+            planet.owner = "neutral"
+
     for fid, faction in factions.items():
         for other in factions:
             if fid != other:
                 faction.diplomacy[other] = "war"
+
     armies: Dict[int, Army] = {}
     a_id = 1
     for fid, faction in factions.items():
@@ -137,7 +152,20 @@ def new_campaign(player_faction: str) -> GameState:
         starter = [UnitCard.from_template(unit_db[fid][0]), UnitCard.from_template(unit_db[fid][1])]
         armies[a_id] = Army(id=a_id, faction_id=fid, planet=capital.name, general=general, units=starter)
         a_id += 1
-    return GameState(1, player_faction, player_faction, factions, planets, armies, unit_db, building_db, tech_db, leaders_db, next_army_id=a_id)
+
+    return GameState(
+        1,
+        player_faction,
+        player_faction,
+        factions,
+        planets,
+        armies,
+        unit_db,
+        building_db,
+        tech_db,
+        leaders_db,
+        next_army_id=a_id,
+    )
 
 
 def serialize(gs: GameState) -> dict:
@@ -159,6 +187,7 @@ def serialize(gs: GameState) -> dict:
             }
             for k, a in gs.armies.items()
         },
+        "recruit_queue": gs.recruit_queue,
     }
 
 
@@ -166,10 +195,29 @@ def deserialize(payload: dict) -> GameState:
     _, _, unit_db, building_db, tech_db, leaders_db = load_game_data()
     factions = {k: Faction(**v) for k, v in payload["factions"].items()}
     planets = {k: Planet(**v) for k, v in payload["planets"].items()}
+
     armies = {}
     for k, a in payload["armies"].items():
         armies[int(k)] = Army(
-            id=a["id"], faction_id=a["faction_id"], planet=a["planet"], general=General(**a["general"]),
-            units=[UnitCard(**u) for u in a["units"]], movement=a["movement"]
+            id=a["id"],
+            faction_id=a["faction_id"],
+            planet=a["planet"],
+            general=General(**a["general"]),
+            units=[UnitCard(**u) for u in a["units"]],
+            movement=a["movement"],
         )
-    return GameState(payload["turn"], payload["current_faction"], payload["player_faction"], factions, planets, armies, unit_db, building_db, tech_db, leaders_db, next_army_id=payload.get("next_army_id", 100))
+
+    return GameState(
+        payload["turn"],
+        payload["current_faction"],
+        payload["player_faction"],
+        factions,
+        planets,
+        armies,
+        unit_db,
+        building_db,
+        tech_db,
+        leaders_db,
+        next_army_id=payload.get("next_army_id", 100),
+        recruit_queue=payload.get("recruit_queue", []),
+    )
