@@ -1,0 +1,6 @@
+[
+  {"id":"empire","name":"Imperial Directorate","color":[170,170,180],"economy_mod":1.1,"research_mod":1.0,"personality":"aggressive","capital":"Corvaris"},
+  {"id":"rebels","name":"Free Systems Coalition","color":[220,110,90],"economy_mod":0.95,"research_mod":1.1,"personality":"opportunistic","capital":"Yalara"},
+  {"id":"republic","name":"Galactic Republic Remnant","color":[100,140,230],"economy_mod":1.0,"research_mod":1.15,"personality":"defensive","capital":"Valon Prime"},
+  {"id":"separatists","name":"Confederacy of Steel Worlds","color":[215,195,70],"economy_mod":1.05,"research_mod":0.95,"personality":"expansionist","capital":"Drexus"}
+]
