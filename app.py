@@ -67,15 +67,17 @@ def side_label(side: Side) -> str:
 
 
 def load_symbol(side: Side) -> Optional[Path]:
-    # Tries common names if the user drops files into /assets.
+    # Tries repository image files first, then common /assets overrides.
     candidates = {
         REBELS: [
+            "rebel.webp",
             "assets/rebel_symbol.svg",
             "assets/rebel.png",
             "assets/rebels.png",
             "assets/rebel_symbol.png",
         ],
         EMPIRE: [
+            "emprie.png",
             "assets/empire_symbol.svg",
             "assets/empire.png",
             "assets/empire_symbol.png",
@@ -414,6 +416,10 @@ def render_world(game: dict) -> None:
     st.subheader("World Map")
     st.caption("Move one hex per turn. Capture neutral or undefended enemy settlements.")
 
+    map_image = Path("Game map.jpg")
+    if map_image.exists():
+        st.image(str(map_image), use_container_width=True)
+
     st.write(
         f"Turn **{game['turn']}** | Active: **{side_label(game['active_side'])}** | You: **{side_label(game['player_side'])}**"
     )
@@ -585,7 +591,7 @@ def render_side_picker() -> None:
     with c1:
         st.markdown("### 🔴 Rebels")
         if rebel_symbol:
-            st.image(str(rebel_symbol), width=140)
+            st.image(str(rebel_symbol), width=180)
         st.write("Unit: Rebel Squad — 3 HP, 1 DMG")
         if st.button("Play Rebels", use_container_width=True):
             setup_game(REBELS)
@@ -593,7 +599,7 @@ def render_side_picker() -> None:
     with c2:
         st.markdown("### ⚫ Empire")
         if empire_symbol:
-            st.image(str(empire_symbol), width=140)
+            st.image(str(empire_symbol), width=180)
         st.write("Unit: Stormtrooper Squad — 3 HP, 1 DMG")
         if st.button("Play Empire", use_container_width=True):
             setup_game(EMPIRE)
