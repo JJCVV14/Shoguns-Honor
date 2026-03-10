@@ -219,9 +219,14 @@ def _move_armies(gs: GameState, faction_id: str, posture: float) -> None:
 
         for neighbor in planet.connections:
             neighbor_planet = gs.planets[neighbor]
+            if neighbor_planet.owner == "revolutionaries":
+                continue
+
             defenders = [
                 other for other in gs.armies.values() if other.planet == neighbor and other.faction_id != faction_id
             ]
+            if any(defender.faction_id == "revolutionaries" for defender in defenders):
+                continue
             defender_power = sum(_army_power(defender) for defender in defenders)
 
             if neighbor_planet.owner == gs.player_faction:
