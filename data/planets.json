@@ -1,15 +1,524 @@
 [
-  {"name":"Corvaris","x":180,"y":120,"owner":"empire","population":72,"stability":70,"base_income":100,"industry":25,"military":2,"trade":20,"slots":4,"connections":["Mygeeto Reach","Kuaton","Ordan Rift"]},
-  {"name":"Mygeeto Reach","x":340,"y":150,"owner":"empire","population":60,"stability":65,"base_income":85,"industry":22,"military":1,"trade":16,"slots":3,"connections":["Corvaris","Kuaton","Mandal Drift"]},
-  {"name":"Kuaton","x":260,"y":280,"owner":"neutral","population":58,"stability":58,"base_income":75,"industry":20,"military":1,"trade":12,"slots":3,"connections":["Corvaris","Mygeeto Reach","Ordan Rift","Yalara"]},
-  {"name":"Ordan Rift","x":150,"y":360,"owner":"neutral","population":55,"stability":52,"base_income":70,"industry":18,"military":1,"trade":14,"slots":3,"connections":["Corvaris","Kuaton","Valon Prime"]},
-  {"name":"Yalara","x":500,"y":260,"owner":"rebels","population":66,"stability":72,"base_income":90,"industry":17,"military":2,"trade":24,"slots":4,"connections":["Kuaton","Mandal Drift","Bracca","Juno Gate"]},
-  {"name":"Mandal Drift","x":410,"y":360,"owner":"rebels","population":59,"stability":67,"base_income":80,"industry":15,"military":1,"trade":20,"slots":3,"connections":["Mygeeto Reach","Yalara","Valon Prime"]},
-  {"name":"Valon Prime","x":300,"y":460,"owner":"republic","population":70,"stability":75,"base_income":95,"industry":23,"military":2,"trade":18,"slots":4,"connections":["Ordan Rift","Mandal Drift","Bracca","Corel Tertius"]},
-  {"name":"Bracca","x":520,"y":430,"owner":"republic","population":63,"stability":68,"base_income":88,"industry":21,"military":1,"trade":14,"slots":3,"connections":["Yalara","Valon Prime","Juno Gate","Drexus"]},
-  {"name":"Juno Gate","x":680,"y":330,"owner":"neutral","population":52,"stability":55,"base_income":72,"industry":12,"military":1,"trade":18,"slots":3,"connections":["Yalara","Bracca","Drexus","Raxus Minor"]},
-  {"name":"Drexus","x":780,"y":420,"owner":"separatists","population":68,"stability":69,"base_income":94,"industry":24,"military":2,"trade":16,"slots":4,"connections":["Bracca","Juno Gate","Raxus Minor","Geon Forge"]},
-  {"name":"Raxus Minor","x":900,"y":320,"owner":"separatists","population":61,"stability":64,"base_income":84,"industry":20,"military":1,"trade":15,"slots":3,"connections":["Juno Gate","Drexus","Geon Forge","Corel Tertius"]},
-  {"name":"Geon Forge","x":980,"y":470,"owner":"neutral","population":57,"stability":50,"base_income":78,"industry":27,"military":1,"trade":10,"slots":3,"connections":["Drexus","Raxus Minor","Corel Tertius"]},
-  {"name":"Corel Tertius","x":720,"y":540,"owner":"neutral","population":56,"stability":57,"base_income":76,"industry":19,"military":1,"trade":17,"slots":3,"connections":["Valon Prime","Raxus Minor","Geon Forge"]}
+  {
+    "name": "Corvaris",
+    "x": 180,
+    "y": 120,
+    "owner": "empire",
+    "population": 72,
+    "stability": 70,
+    "base_income": 100,
+    "industry": 25,
+    "military": 2,
+    "trade": 20,
+    "slots": 4,
+    "connections": [
+      "Mygeeto Reach",
+      "Kuaton",
+      "Ordan Rift",
+      "Aster Vale"
+    ]
+  },
+  {
+    "name": "Mygeeto Reach",
+    "x": 340,
+    "y": 150,
+    "owner": "empire",
+    "population": 60,
+    "stability": 65,
+    "base_income": 85,
+    "industry": 22,
+    "military": 1,
+    "trade": 16,
+    "slots": 3,
+    "connections": [
+      "Corvaris",
+      "Kuaton",
+      "Mandal Drift",
+      "Nyx Haven"
+    ]
+  },
+  {
+    "name": "Kuaton",
+    "x": 260,
+    "y": 280,
+    "owner": "neutral",
+    "population": 58,
+    "stability": 58,
+    "base_income": 75,
+    "industry": 20,
+    "military": 1,
+    "trade": 12,
+    "slots": 3,
+    "connections": [
+      "Corvaris",
+      "Mygeeto Reach",
+      "Ordan Rift",
+      "Yalara",
+      "Selene Cross"
+    ]
+  },
+  {
+    "name": "Ordan Rift",
+    "x": 150,
+    "y": 360,
+    "owner": "neutral",
+    "population": 55,
+    "stability": 52,
+    "base_income": 70,
+    "industry": 18,
+    "military": 1,
+    "trade": 14,
+    "slots": 3,
+    "connections": [
+      "Corvaris",
+      "Kuaton",
+      "Valon Prime",
+      "Titan Anchorage"
+    ]
+  },
+  {
+    "name": "Yalara",
+    "x": 500,
+    "y": 260,
+    "owner": "neutral",
+    "population": 66,
+    "stability": 72,
+    "base_income": 90,
+    "industry": 17,
+    "military": 2,
+    "trade": 24,
+    "slots": 4,
+    "connections": [
+      "Kuaton",
+      "Mandal Drift",
+      "Bracca",
+      "Juno Gate",
+      "Vesper Run"
+    ]
+  },
+  {
+    "name": "Mandal Drift",
+    "x": 410,
+    "y": 360,
+    "owner": "neutral",
+    "population": 59,
+    "stability": 67,
+    "base_income": 80,
+    "industry": 15,
+    "military": 1,
+    "trade": 20,
+    "slots": 3,
+    "connections": [
+      "Mygeeto Reach",
+      "Yalara",
+      "Valon Prime",
+      "Helios Spire"
+    ]
+  },
+  {
+    "name": "Valon Prime",
+    "x": 300,
+    "y": 460,
+    "owner": "republic",
+    "population": 70,
+    "stability": 75,
+    "base_income": 95,
+    "industry": 23,
+    "military": 2,
+    "trade": 18,
+    "slots": 4,
+    "connections": [
+      "Ordan Rift",
+      "Mandal Drift",
+      "Bracca",
+      "Corel Tertius",
+      "Obsidian Reach"
+    ]
+  },
+  {
+    "name": "Bracca",
+    "x": 520,
+    "y": 430,
+    "owner": "republic",
+    "population": 63,
+    "stability": 68,
+    "base_income": 88,
+    "industry": 21,
+    "military": 1,
+    "trade": 14,
+    "slots": 3,
+    "connections": [
+      "Yalara",
+      "Valon Prime",
+      "Juno Gate",
+      "Drexus",
+      "Cinder Belt"
+    ]
+  },
+  {
+    "name": "Juno Gate",
+    "x": 680,
+    "y": 330,
+    "owner": "neutral",
+    "population": 52,
+    "stability": 55,
+    "base_income": 72,
+    "industry": 12,
+    "military": 1,
+    "trade": 18,
+    "slots": 3,
+    "connections": [
+      "Yalara",
+      "Bracca",
+      "Drexus",
+      "Raxus Minor",
+      "Polaris Gate"
+    ]
+  },
+  {
+    "name": "Drexus",
+    "x": 780,
+    "y": 420,
+    "owner": "separatists",
+    "population": 68,
+    "stability": 69,
+    "base_income": 94,
+    "industry": 24,
+    "military": 2,
+    "trade": 16,
+    "slots": 4,
+    "connections": [
+      "Bracca",
+      "Juno Gate",
+      "Raxus Minor",
+      "Geon Forge",
+      "Meridian Echo"
+    ]
+  },
+  {
+    "name": "Raxus Minor",
+    "x": 900,
+    "y": 320,
+    "owner": "separatists",
+    "population": 61,
+    "stability": 64,
+    "base_income": 84,
+    "industry": 20,
+    "military": 1,
+    "trade": 15,
+    "slots": 3,
+    "connections": [
+      "Juno Gate",
+      "Drexus",
+      "Geon Forge",
+      "Corel Tertius",
+      "Solace Point"
+    ]
+  },
+  {
+    "name": "Geon Forge",
+    "x": 980,
+    "y": 470,
+    "owner": "rebels",
+    "population": 57,
+    "stability": 50,
+    "base_income": 78,
+    "industry": 27,
+    "military": 1,
+    "trade": 10,
+    "slots": 3,
+    "connections": [
+      "Drexus",
+      "Raxus Minor",
+      "Corel Tertius",
+      "Argent Maw",
+      "Umbra Nexus"
+    ]
+  },
+  {
+    "name": "Corel Tertius",
+    "x": 720,
+    "y": 540,
+    "owner": "neutral",
+    "population": 56,
+    "stability": 57,
+    "base_income": 76,
+    "industry": 19,
+    "military": 1,
+    "trade": 17,
+    "slots": 3,
+    "connections": [
+      "Valon Prime",
+      "Raxus Minor",
+      "Geon Forge",
+      "Drakon Shoals"
+    ]
+  },
+  {
+    "name": "Aster Vale",
+    "x": 90,
+    "y": 90,
+    "owner": "neutral",
+    "population": 48,
+    "stability": 61,
+    "base_income": 62,
+    "industry": 11,
+    "military": 1,
+    "trade": 13,
+    "slots": 2,
+    "connections": [
+      "Corvaris",
+      "Nyx Haven"
+    ]
+  },
+  {
+    "name": "Nyx Haven",
+    "x": 250,
+    "y": 70,
+    "owner": "neutral",
+    "population": 51,
+    "stability": 59,
+    "base_income": 66,
+    "industry": 14,
+    "military": 1,
+    "trade": 12,
+    "slots": 2,
+    "connections": [
+      "Aster Vale",
+      "Mygeeto Reach",
+      "Selene Cross"
+    ]
+  },
+  {
+    "name": "Selene Cross",
+    "x": 370,
+    "y": 230,
+    "owner": "neutral",
+    "population": 53,
+    "stability": 60,
+    "base_income": 68,
+    "industry": 16,
+    "military": 1,
+    "trade": 10,
+    "slots": 2,
+    "connections": [
+      "Nyx Haven",
+      "Kuaton",
+      "Helios Spire"
+    ]
+  },
+  {
+    "name": "Titan Anchorage",
+    "x": 120,
+    "y": 500,
+    "owner": "neutral",
+    "population": 47,
+    "stability": 55,
+    "base_income": 64,
+    "industry": 13,
+    "military": 1,
+    "trade": 11,
+    "slots": 2,
+    "connections": [
+      "Ordan Rift",
+      "Obsidian Reach"
+    ]
+  },
+  {
+    "name": "Vesper Run",
+    "x": 590,
+    "y": 210,
+    "owner": "neutral",
+    "population": 50,
+    "stability": 62,
+    "base_income": 69,
+    "industry": 12,
+    "military": 1,
+    "trade": 18,
+    "slots": 3,
+    "connections": [
+      "Yalara",
+      "Polaris Gate"
+    ]
+  },
+  {
+    "name": "Helios Spire",
+    "x": 440,
+    "y": 300,
+    "owner": "neutral",
+    "population": 52,
+    "stability": 63,
+    "base_income": 71,
+    "industry": 14,
+    "military": 1,
+    "trade": 16,
+    "slots": 2,
+    "connections": [
+      "Mandal Drift",
+      "Selene Cross",
+      "Cinder Belt"
+    ]
+  },
+  {
+    "name": "Obsidian Reach",
+    "x": 280,
+    "y": 560,
+    "owner": "neutral",
+    "population": 49,
+    "stability": 54,
+    "base_income": 67,
+    "industry": 15,
+    "military": 1,
+    "trade": 9,
+    "slots": 2,
+    "connections": [
+      "Titan Anchorage",
+      "Valon Prime",
+      "Lysara Bloom"
+    ]
+  },
+  {
+    "name": "Cinder Belt",
+    "x": 610,
+    "y": 460,
+    "owner": "neutral",
+    "population": 54,
+    "stability": 57,
+    "base_income": 73,
+    "industry": 17,
+    "military": 1,
+    "trade": 11,
+    "slots": 3,
+    "connections": [
+      "Bracca",
+      "Helios Spire",
+      "Meridian Echo"
+    ]
+  },
+  {
+    "name": "Polaris Gate",
+    "x": 760,
+    "y": 240,
+    "owner": "neutral",
+    "population": 46,
+    "stability": 58,
+    "base_income": 65,
+    "industry": 10,
+    "military": 1,
+    "trade": 17,
+    "slots": 2,
+    "connections": [
+      "Vesper Run",
+      "Juno Gate",
+      "Solace Point"
+    ]
+  },
+  {
+    "name": "Meridian Echo",
+    "x": 860,
+    "y": 500,
+    "owner": "neutral",
+    "population": 55,
+    "stability": 56,
+    "base_income": 74,
+    "industry": 18,
+    "military": 1,
+    "trade": 12,
+    "slots": 3,
+    "connections": [
+      "Cinder Belt",
+      "Drexus",
+      "Argent Maw"
+    ]
+  },
+  {
+    "name": "Solace Point",
+    "x": 980,
+    "y": 250,
+    "owner": "neutral",
+    "population": 45,
+    "stability": 60,
+    "base_income": 63,
+    "industry": 9,
+    "military": 1,
+    "trade": 19,
+    "slots": 2,
+    "connections": [
+      "Polaris Gate",
+      "Raxus Minor",
+      "Umbra Nexus"
+    ]
+  },
+  {
+    "name": "Argent Maw",
+    "x": 1080,
+    "y": 560,
+    "owner": "neutral",
+    "population": 52,
+    "stability": 52,
+    "base_income": 70,
+    "industry": 20,
+    "military": 1,
+    "trade": 8,
+    "slots": 2,
+    "connections": [
+      "Meridian Echo",
+      "Geon Forge",
+      "Drakon Shoals"
+    ]
+  },
+  {
+    "name": "Umbra Nexus",
+    "x": 1090,
+    "y": 410,
+    "owner": "neutral",
+    "population": 50,
+    "stability": 53,
+    "base_income": 68,
+    "industry": 16,
+    "military": 1,
+    "trade": 10,
+    "slots": 2,
+    "connections": [
+      "Solace Point",
+      "Geon Forge",
+      "Lysara Bloom"
+    ]
+  },
+  {
+    "name": "Drakon Shoals",
+    "x": 860,
+    "y": 620,
+    "owner": "neutral",
+    "population": 47,
+    "stability": 55,
+    "base_income": 66,
+    "industry": 14,
+    "military": 1,
+    "trade": 12,
+    "slots": 2,
+    "connections": [
+      "Corel Tertius",
+      "Argent Maw",
+      "Lysara Bloom"
+    ]
+  },
+  {
+    "name": "Lysara Bloom",
+    "x": 560,
+    "y": 610,
+    "owner": "neutral",
+    "population": 58,
+    "stability": 64,
+    "base_income": 77,
+    "industry": 16,
+    "military": 1,
+    "trade": 15,
+    "slots": 3,
+    "connections": [
+      "Obsidian Reach",
+      "Umbra Nexus",
+      "Drakon Shoals"
+    ]
+  }
 ]
