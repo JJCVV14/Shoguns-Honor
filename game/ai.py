@@ -186,14 +186,6 @@ def _recruit_units(gs: GameState, faction_id: str, owned_planets) -> None:
         if not recruit_pool:
             continue
 
-        stationed = [
-            army
-            for army in gs.armies.values()
-            if army.faction_id == faction_id and army.planet == planet.name
-        ]
-        if not stationed:
-            continue
-
         enemy_adjacent = any(gs.planets[n].owner not in (faction_id, "neutral") for n in planet.connections)
         cheapest_cost = min(unit["cost"] for unit in recruit_pool)
         if faction.treasury < cheapest_cost:
@@ -205,15 +197,14 @@ def _recruit_units(gs: GameState, faction_id: str, owned_planets) -> None:
                 break
 
             faction.treasury -= template["cost"]
-            gs.armies[gs.next_army_id] = Army(
-                id=gs.next_army_id,
-                faction_id=faction_id,
-                planet=planet.name,
-                general=General(name="Field Commander"),
-                units=[UnitCard.from_template(template)],
-                movement=0,
+            gs.recruit_queue.append(
+                {
+                    "faction": faction_id,
+                    "planet": planet.name,
+                    "unit": template["name"],
+                    "turns": max(1, 4 - planet.military),
+                }
             )
-            gs.next_army_id += 1
 
 
 def start_research_if_idle(gs: GameState, faction_id: str) -> None:
