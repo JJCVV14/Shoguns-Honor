@@ -191,24 +191,15 @@ def _recruit_units(gs: GameState, faction_id: str, owned_planets) -> None:
             for army in gs.armies.values()
             if army.faction_id == faction_id and army.planet == planet.name
         ]
-        if not stationed or faction.treasury <= 90:
+        if not stationed:
             continue
 
         enemy_adjacent = any(gs.planets[n].owner not in (faction_id, "neutral") for n in planet.connections)
-        min_power_goal = 280 if enemy_adjacent else 180
+        cheapest_cost = min(unit["cost"] for unit in recruit_pool)
+        if faction.treasury < cheapest_cost:
+            continue
 
-        spending_floor = 110
-        loops = 0
-        while faction.treasury > spending_floor:
-            loops += 1
-            if loops > 8:
-                break
-
-            local_armies = [a for a in gs.armies.values() if a.faction_id == faction_id and a.planet == planet.name]
-            local_power = sum(_army_power(a) for a in local_armies)
-            if local_power >= min_power_goal and faction.treasury < 560:
-                break
-
+        while faction.treasury >= cheapest_cost:
             template = _pick_recruit_template(recruit_pool, faction.treasury, enemy_adjacent)
             if not template:
                 break
