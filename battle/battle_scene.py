@@ -125,8 +125,7 @@ class BattleScene:
                 continue
             enemies = [e for e in self.squads if e.team != s.team and e.hp > 0]
             if not enemies:
-                self.result = "victory" if s.team == "attacker" else "defeat"
-                return
+                continue
             nearest = min(enemies, key=lambda e: s.pos.distance_to(e.pos))
             dist = s.pos.distance_to(nearest.pos)
             if s.team == "defender":
@@ -184,6 +183,9 @@ class BattleScene:
             self.result = "defeat"
         elif not dfd:
             self.result = "victory"
+
+        # Battles now end only when one side has no units left.
+        # Routing squads remain on the battlefield and do not trigger early victory.
         self.projectiles.extend(spawned_projectiles)
         for pr in self.projectiles:
             pr["pos"] += pr["vel"] * dt
