@@ -3,9 +3,9 @@
     "id": "empire",
     "name": "Imperial Directorate",
     "color": [
-      170,
-      170,
-      180
+      60,
+      185,
+      80
     ],
     "economy_mod": 1.1,
     "research_mod": 1.0,
