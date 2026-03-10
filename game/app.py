@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import random
+
 import pygame
 
 from battle.autoresolve import resolve as auto_resolve
@@ -39,6 +41,11 @@ class App:
         self.recruit_items = []
         self.build_items = []
         self.research_items = []
+        star_rng = random.Random(42)
+        self.star_field = [
+            (star_rng.randint(8, 1138), star_rng.randint(8, SCREEN_HEIGHT - 50), star_rng.randint(1, 2))
+            for _ in range(220)
+        ]
 
     def run(self):
         while True:
@@ -796,8 +803,11 @@ class App:
 
     def draw_campaign(self):
         gs = self.gs
-        self.screen.fill((22, 26, 35))
-        pygame.draw.rect(self.screen, (25, 32, 44), (0, 0, 1150, SCREEN_HEIGHT))
+        self.screen.fill((5, 7, 16))
+        pygame.draw.rect(self.screen, (8, 12, 26), (0, 0, 1150, SCREEN_HEIGHT))
+        for x, y, radius in self.star_field:
+            brightness = 170 + (x + y) % 85
+            pygame.draw.circle(self.screen, (brightness, brightness, brightness), (x, y), radius)
 
         for p in gs.planets.values():
             color = (130, 130, 130) if p.owner == "neutral" else tuple(gs.factions[p.owner].color)
