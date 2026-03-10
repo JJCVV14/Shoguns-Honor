@@ -236,6 +236,13 @@ class App:
         planet = gs.planets[gs.selected_planet]
         faction = gs.factions[gs.player_faction]
 
+        already_recruiting = any(
+            q["faction"] == gs.player_faction and q["planet"] == planet.name for q in gs.recruit_queue
+        )
+        if already_recruiting:
+            gs.message = f"{planet.name} is already recruiting a unit."
+            return
+
         turns = max(1, 4 - planet.military)
         if faction.treasury < unit["cost"]:
             gs.message = "Insufficient funds."
