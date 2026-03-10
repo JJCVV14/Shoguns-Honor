@@ -524,6 +524,25 @@ class App:
 
         fac.treasury += income - upkeep
 
+    def projected_next_turn_income(self, fid):
+        gs = self.gs
+        fac = gs.factions[fid]
+        if fid == "revolutionaries":
+            return 0
+        econ_bonus = 0.1 if "econ_1" in fac.unlocked_techs else 0.0
+        income = sum(
+            int(p.income(fac.tax_rate, econ_bonus) * fac.economy_mod)
+            for p in gs.planets.values()
+            if p.owner == fid
+        )
+        upkeep = sum(
+            u.stats["upkeep"]
+            for a in gs.armies.values()
+            if a.faction_id == fid
+            for u in a.units
+        )
+        return income - upkeep
+
     def end_turn(self):
         gs = self.gs
         if self.pending_battle:
@@ -810,7 +829,12 @@ class App:
             pygame.draw.circle(self.screen, (brightness, brightness, brightness), (x, y), radius)
 
         for p in gs.planets.values():
-            color = (130, 130, 130) if p.owner == "neutral" else tuple(gs.factions[p.owner].color)
+            if p.owner == "neutral":
+                color = (130, 130, 130)
+            elif p.owner == "empire":
+                color = (60, 185, 80)
+            else:
+                color = tuple(gs.factions[p.owner].color)
             for n in p.connections:
                 p2 = gs.planets[n]
                 pygame.draw.line(self.screen, (60, 70, 80), (p.x, p.y), (p2.x, p2.y), 1)
@@ -826,6 +850,7 @@ class App:
         panel = pygame.Rect(1150, 0, 216, SCREEN_HEIGHT)
         pygame.draw.rect(self.screen, (35, 36, 48), panel)
         top = gs.factions[gs.player_faction]
+        projected_income = self.projected_next_turn_income(gs.player_faction)
         status_line = "   |   ".join([
             f"Turn {gs.turn}",
             f"Treasury: {top.treasury}",
@@ -833,6 +858,7 @@ class App:
             f"Research: {top.research_target or 'None'}",
             f"Pending battle: {'Yes' if self.pending_battle else 'No'}",
             f"Queued recruits: {len([q for q in gs.recruit_queue if q['faction'] == gs.player_faction])}",
+            f"Projected next income: {projected_income:+d}",
         ])
 
         labels = ["Save", "End Turn", "Auto Resolve", "Manual Battle", "Recruit Unit", "Build", "Research", "Tax +", "Tax -", "View Army", "Training Queue"]
