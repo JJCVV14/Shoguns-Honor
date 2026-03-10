@@ -187,6 +187,9 @@ def _recruit_units(gs: GameState, faction_id: str, owned_planets) -> None:
             continue
 
         enemy_adjacent = any(gs.planets[n].owner not in (faction_id, "neutral") for n in planet.connections)
+        if any(q["faction"] == faction_id and q["planet"] == planet.name for q in gs.recruit_queue):
+            continue
+
         cheapest_cost = min(unit["cost"] for unit in recruit_pool)
         if faction.treasury < cheapest_cost:
             continue
