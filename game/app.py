@@ -655,10 +655,9 @@ class App:
     def check_victory(self):
         gs = self.gs
         player = gs.player_faction
-        owned = [p for p in gs.planets.values() if p.owner == player]
         enemies = [f for f in gs.factions if f not in (player, "revolutionaries") and any(p.owner == f for p in gs.planets.values())]
 
-        if len(owned) >= 10 or not enemies:
+        if not enemies:
             gs.message = "Victory achieved! Press ESC to quit."
         if not any(a.faction_id == player for a in gs.armies.values()) and not any(p.owner == player for p in gs.planets.values()):
             gs.message = "Defeat. Press ESC to quit."
@@ -672,7 +671,7 @@ class App:
         elif self.mode == "help":
             self.screen.fill((15, 15, 20))
             tips = [
-                "Goal: own 10 planets (or eliminate all rival factions) to win.",
+                "Goal: eliminate all rival factions by reducing them to zero controlled planets.",
                 "Map controls: LMB selects a planet/army. RMB moves selected army to a connected planet.",
                 "You can only recruit/build on planets you own. Select a planet first, then click Recruit or Build.",
                 "Recruiting uses the Training Queue and takes turns to complete (faster on military worlds).",
