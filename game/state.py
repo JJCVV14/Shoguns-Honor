@@ -123,6 +123,10 @@ def load_game_data() -> tuple:
     factions = json.loads((base / "factions.json").read_text(encoding="utf-8"))
     planets = json.loads((base / "planets.json").read_text(encoding="utf-8"))
     units = json.loads((base / "units.json").read_text(encoding="utf-8"))
+    for faction_units in units.values():
+        for unit in faction_units:
+            unit["morale"] = unit["morale"] * 1.5
+
     buildings = json.loads((base / "buildings.json").read_text(encoding="utf-8"))
     tech = json.loads((base / "tech_tree.json").read_text(encoding="utf-8"))
     leaders = json.loads((base / "leaders.json").read_text(encoding="utf-8"))
