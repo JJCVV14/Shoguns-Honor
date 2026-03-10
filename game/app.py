@@ -247,16 +247,24 @@ class App:
 
     def resolve_recruitment(self, fid):
         gs = self.gs
-        finished_indexes = []
-        for i, item in enumerate(gs.recruit_queue):
-            if item["faction"] != fid:
-                continue
-            item["turns"] -= 1
-            if item["turns"] <= 0:
-                finished_indexes.append(i)
+        remaining_queue = []
 
-        for i in reversed(finished_indexes):
-            item = gs.recruit_queue.pop(i)
+        for item in gs.recruit_queue:
+            if item["faction"] != fid:
+                remaining_queue.append(item)
+                continue
+
+            planet = gs.planets.get(item["planet"])
+            if not planet or planet.owner != fid:
+                if item["faction"] == gs.player_faction:
+                    gs.message = f"Recruitment for {item['unit']} at {item['planet']} was canceled (planet lost)."
+                continue
+
+            item["turns"] -= 1
+            if item["turns"] > 0:
+                remaining_queue.append(item)
+                continue
+
             template = next((u for u in gs.unit_db[item["faction"]] if u["name"] == item["unit"]), None)
             if template:
                 new_army = Army(
@@ -273,6 +281,8 @@ class App:
                 gs.next_army_id += 1
                 if item["faction"] == gs.player_faction:
                     gs.message = f"{item['unit']} is ready at {item['planet']} as a new army."
+
+        gs.recruit_queue = remaining_queue
 
     def merge_friendly_armies(self, planet_name, faction_id, keep_army_id=None):
         gs = self.gs
