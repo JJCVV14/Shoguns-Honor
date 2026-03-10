@@ -444,30 +444,8 @@ class App:
             gs.next_army_id += 1
 
     def trigger_revolutionaries(self):
-        gs = self.gs
-        for planet in gs.planets.values():
-            if planet.owner in ("neutral", "revolutionaries"):
-                continue
-            if planet.stability - planet.unrest > 0:
-                continue
-            planet.owner = "revolutionaries"
-            planet.unrest = 0
-            for aid in [aid for aid,a in gs.armies.items() if a.planet == planet.name and a.faction_id != "revolutionaries"]:
-                gs.armies.pop(aid, None)
-            template = gs.unit_db["revolutionaries"][0]
-            rev_units = [UnitCard.from_template(template) for _ in range(4)]
-            gs.armies[gs.next_army_id] = Army(
-                id=gs.next_army_id,
-                faction_id="revolutionaries",
-                planet=planet.name,
-                general=General(name="Revolutionary Cell"),
-                units=rev_units,
-                movement=0,
-                is_planet_garrison=True,
-                can_move=False,
-            )
-            gs.next_army_id += 1
-            gs.message = f"Revolutionaries have seized {planet.name}!"
+        # Revolutionaries are static by design: they do not expand or spawn new uprisings.
+        return
 
     def start_research_player(self, tech_id=None):
         gs = self.gs
@@ -590,6 +568,9 @@ class App:
             armies = [a for a in gs.armies.values() if a.planet == p.name and len(a.units) > 0]
             sides = sorted(set(a.faction_id for a in armies))
             if len(sides) >= 2:
+                # Only the player can initiate battles involving revolutionaries.
+                if "revolutionaries" in sides and active_faction != gs.player_faction:
+                    continue
                 atk = next((a for a in armies if a.faction_id == active_faction), armies[0])
                 dfd = next(a for a in armies if a.faction_id != atk.faction_id)
                 self.pending_battle = (p.name, atk.id, dfd.id)
