@@ -746,7 +746,7 @@ class App:
             turns = max(1, 4 - planet.military)
             text = (
                 f"{unit['name']} | Cost: {unit['cost']} | Recruit at: {planet.name} | Time: {turns} turn(s) | "
-                f"HP:{unit['health']} DMG:{unit['damage']} ARM:{unit['armor']} RNG:{unit['range']} SPD:{unit['speed']}"
+                f"HP:{unit['health']} DMG:{unit['damage']} ARM:{unit['armor']} RNG:{unit['range']} SPD:{unit['speed']} MOR:{unit['morale']}"
             )
             self.screen.blit(self.font.render(text, True, (235, 235, 235)), (58, 145 + i * 80))
 
@@ -786,7 +786,10 @@ class App:
             row = pygame.Rect(45, 100 + i * 60, 1180, 52)
             pygame.draw.rect(self.screen, (48, 54, 68), row)
             pygame.draw.rect(self.screen, (160, 170, 190), row, 1)
-            txt = f"{unit.name} | HP:{unit.hp:.0f}/{unit.stats['health']} | DMG:{unit.stats['damage']} ARM:{unit.stats['armor']} RNG:{unit.stats['range']} SPD:{unit.stats['speed']}"
+            txt = (
+                f"{unit.name} | HP:{unit.hp:.0f}/{unit.stats['health']} | DMG:{unit.stats['damage']} ARM:{unit.stats['armor']} "
+                f"RNG:{unit.stats['range']} SPD:{unit.stats['speed']} MOR:{unit.stats['morale']}"
+            )
             self.screen.blit(self.font.render(txt, True, (235, 235, 235)), (58, 118 + i * 60))
         Button((30, 680, 210, 38), "Back to Campaign").draw(self.screen, self.font)
         Button((260, 680, 210, 38), "Merge Armies Here").draw(self.screen, self.font)
